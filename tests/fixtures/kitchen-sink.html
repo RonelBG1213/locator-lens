@@ -82,6 +82,44 @@
       <iframe id="modal-frame" title="Modal content" src="child-frame.html"></iframe>
     </section>
 
+    <!-- Anchoring cases for core/axisSelectors.ts. Each target is reachable only
+         by the relationship named in its comment: the bare <div> nests exist to
+         push every other anchor out of range, so a case that starts passing for
+         the wrong reason shows up as a changed anchor string. -->
+    <section id="axis-section">
+      <h2>Axis anchoring</h2>
+
+      <!-- Ancestor anchor, two levels up. -->
+      <div id="axis-gallery">
+        <div><img src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" alt="Axis gallery photo"></div>
+      </div>
+
+      <!-- Seven levels below its only anchor: the five-parent cap must bite and
+           leave this element with no anchored form at all. -->
+      <div id="axis-deep">
+        <div><div><div><div><div><div>
+          <span>Too deep to anchor</span>
+        </div></div></div></div></div></div>
+      </div>
+
+      <!-- Preceding sibling anchor: no ancestor is identifiable within five. -->
+      <div id="axis-preceding-root">
+        <div><div><div><div><div>
+          <input id="axis-qty" type="number" aria-label="Axis quantity">
+          <span>Quantity hint</span>
+        </div></div></div></div></div>
+      </div>
+
+      <!-- Following sibling anchor: the target is the first child, so CSS has to
+           reach backwards with :has(). -->
+      <div id="axis-following-root">
+        <div><div><div><div><div>
+          <span>Caption target</span>
+          <input id="axis-caption" type="text" aria-label="Axis caption">
+        </div></div></div></div></div>
+      </div>
+    </section>
+
     <script>
       const host = document.getElementById('shadow-host');
       const root = host.attachShadow({ mode: 'open' });

@@ -82,6 +82,18 @@ export const PANEL_CSS = `
     background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
     font: 11.5px/1.5 var(--mono); white-space: pre;
   }
+  label.check {
+    display: flex; align-items: center; gap: 7px;
+    color: var(--muted); font-size: 12px; cursor: pointer;
+  }
+  label.check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+
+  img.shot {
+    display: block; max-width: 100%; height: auto;
+    background: var(--panel);
+    border: 1px solid var(--line); border-radius: 6px;
+  }
+
   .row { display: flex; align-items: center; gap: 8px; }
   .row.wrap { flex-wrap: wrap; }
   .grow { flex: 1; }

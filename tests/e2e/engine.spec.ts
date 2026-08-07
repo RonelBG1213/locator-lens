@@ -14,14 +14,23 @@ import { HARNESS_BUNDLE } from './global-setup.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 
+const devDependencies = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'))
+  .devDependencies as Record<string, string>;
+
 test('the vendored engine matches the pinned playwright-core version', () => {
-  const pinned = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).devDependencies[
-    'playwright-core'
-  ];
+  const pinned = devDependencies['playwright-core'];
   const vendored = readFileSync(resolve(root, 'src/vendor/injectedScript.generated.js'), 'utf8');
 
   // The extractor stamps the version it read into the generated banner.
   expect(vendored).toContain(`export const PLAYWRIGHT_CORE_VERSION = "${pinned}"`);
+});
+
+test('the engine and the runner validating it are the same version', () => {
+  // `playwright-core` supplies the vendored engine; `@playwright/test` runs the
+  // suite that validates it. Bumping one alone is silent — npm nests a second
+  // playwright-core under @playwright/test — so the new engine would be checked
+  // against the old runner. Upgrade both together: `npm run vendor:upgrade`.
+  expect(devDependencies['@playwright/test']).toBe(devDependencies['playwright-core']);
 });
 
 test('every engine member the plugin depends on is present', async ({ page }) => {

@@ -10,10 +10,14 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 import { Candidates } from './components/Candidates.js';
 import { Inspector } from './components/Inspector.js';
 import { PomExport } from './components/PomExport.js';
+import { Screenshot } from './components/Screenshot.js';
 import { SelectorEditor } from './components/SelectorEditor.js';
 import {
   activeTabId,
+  captureVisibleTab,
+  copyImageToClipboard,
   copyToClipboard,
+  downloadBlob,
   downloadText,
   ensureInjected,
   hasPersistentAccess,
@@ -23,12 +27,20 @@ import {
   saveSettings,
   send,
 } from './bridge.js';
+import { crop, type Shot } from './capture.js';
 import { PANEL_CSS } from './styles.js';
 import { propertyName } from '../core/pom.js';
 import { pageExpression } from '../shared/expression.js';
 import { DEFAULT_SETTINGS } from '../shared/types.js';
 import type { ContentToPanel } from '../shared/messages.js';
-import type { Candidate, EvaluationResult, PickResult, SessionEntry, Settings } from '../shared/types.js';
+import type {
+  Candidate,
+  CaptureTarget,
+  EvaluationResult,
+  PickResult,
+  SessionEntry,
+  Settings,
+} from '../shared/types.js';
 
 /** Keeps typing responsive while still evaluating against the live page. */
 const EVALUATE_DEBOUNCE_MS = 180;
@@ -48,12 +60,27 @@ function App() {
   const [persistent, setPersistent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  const [shot, setShot] = useState<Shot | null>(null);
+  const [shotBusy, setShotBusy] = useState(false);
+  const [shotError, setShotError] = useState<string | null>(null);
+  const [shotHighlight, setShotHighlight] = useState(true);
+
   const toastTimer = useRef<number>();
+  /** Object URLs are not garbage collected; the live one is tracked so it can be revoked. */
+  const shotUrl = useRef<string | null>(null);
 
   const flash = useCallback((message: string) => {
     setToast(message);
     window.clearTimeout(toastTimer.current);
     toastTimer.current = window.setTimeout(() => setToast(null), 1600);
+  }, []);
+
+  /** One shot is kept at a time, so the panel never holds more than one image. */
+  const replaceShot = useCallback((next: Shot | null) => {
+    if (shotUrl.current) URL.revokeObjectURL(shotUrl.current);
+    shotUrl.current = next?.url ?? null;
+    setShot(next);
+    setShotError(null);
   }, []);
 
   // ------------------------------------------------------------- connection
@@ -104,13 +131,15 @@ function App() {
       if (message.type === 'PSP_PICKED') {
         setPick(message.result);
         setPicking(false);
+        // The old shot is a picture of a different element now.
+        replaceShot(null);
       } else if (message.type === 'PSP_MODE_CHANGED') {
         setPicking(message.mode === 'pick');
       }
     };
     chrome.runtime.onMessage.addListener(listener);
     return () => chrome.runtime.onMessage.removeListener(listener);
-  }, []);
+  }, [replaceShot]);
 
   // ------------------------------------------------------- live selector box
 
@@ -125,13 +154,10 @@ function App() {
     }
 
     const timer = window.setTimeout(async () => {
-      const result = await send(tabId, { type: 'PSP_EVALUATE', selector: text });
-      setEvaluation(result);
-      // Only paint matches for a selector that actually resolved.
-      await send(tabId, {
-        type: 'PSP_HIGHLIGHT',
-        selector: result && result.error === null ? text : null,
-      });
+      // The content script highlights as part of evaluating, in every frame the
+      // selector reaches — so no separate highlight round trip here.
+      setEvaluation(await send(tabId, { type: 'PSP_EVALUATE', selector: text }));
+      await send(tabId, { type: 'PSP_HIGHLIGHT', selector: text });
     }, EVALUATE_DEBOUNCE_MS);
 
     return () => window.clearTimeout(timer);
@@ -175,6 +201,64 @@ function App() {
       flash('Added to page object');
     },
     [pick, flash],
+  );
+
+  /**
+   * Photograph the page in three beats: get it ready (overlay hidden, element
+   * scrolled into view, rect measured), take the picture, put the page back.
+   *
+   * The third beat is in a finally for a reason — if the capture throws, the page
+   * would otherwise be left unable to draw its highlights until the content
+   * script's own watchdog fires.
+   */
+  const capture = useCallback(
+    async (target: CaptureTarget) => {
+      if (tabId === null) return;
+      setShotBusy(true);
+      setShotError(null);
+
+      // Only a viewport shot gets a box; an element shot is already the element,
+      // and an outline would sit on top of the edges you want to see.
+      const highlight = target === 'viewport' && shotHighlight && pick !== null;
+
+      try {
+        const started = await send(tabId, { type: 'PSP_CAPTURE_BEGIN', target, highlight });
+        if (!started) {
+          setShotError('Lost contact with the page. Click the toolbar icon to reconnect.');
+          return;
+        }
+        if (!started.ok) {
+          setShotError(started.error);
+          return;
+        }
+
+        const dataUrl = await captureVisibleTab(tabId);
+        if (!dataUrl) {
+          setShotError(
+            'Chrome would not capture this tab. Click the toolbar icon to reconnect, or turn on “Stay connected” below.',
+          );
+          return;
+        }
+
+        replaceShot(await crop(dataUrl, started.geometry, { target, highlight }));
+      } catch (error) {
+        setShotError(error instanceof Error ? error.message : 'The screenshot failed.');
+      } finally {
+        await send(tabId, { type: 'PSP_CAPTURE_END' });
+        setShotBusy(false);
+      }
+    },
+    [tabId, replaceShot, shotHighlight, pick],
+  );
+
+  const copyImage = useCallback(
+    (blob: Blob) => {
+      void copyImageToClipboard(blob).then(
+        () => flash('Image copied'),
+        () => flash('Clipboard refused the image'),
+      );
+    },
+    [flash],
   );
 
   const updateSettings = useCallback(
@@ -237,7 +321,27 @@ function App() {
         )}
 
         {available !== false && (
-          <SelectorEditor value={selector} result={evaluation} onChange={setSelector} />
+          <SelectorEditor
+            value={selector}
+            result={evaluation}
+            onChange={setSelector}
+            onUse={setSelector}
+          />
+        )}
+
+        {available !== false && (
+          <Screenshot
+            info={pick?.info ?? null}
+            shot={shot}
+            busy={shotBusy}
+            error={shotError}
+            highlight={shotHighlight}
+            onHighlightChange={setShotHighlight}
+            onCapture={(target) => void capture(target)}
+            onCopy={copyImage}
+            onDownload={downloadBlob}
+            onClear={() => replaceShot(null)}
+          />
         )}
 
         <PomExport

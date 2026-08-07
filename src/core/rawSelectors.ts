@@ -12,7 +12,7 @@
 const SAFE_ID = /^[A-Za-z][\w-]*$/;
 const GENERATED_ID = /^[A-Za-z_-]{0,4}\d{5,}$/;
 
-function isAnchorId(id: string): boolean {
+export function isAnchorId(id: string): boolean {
   return SAFE_ID.test(id) && !GENERATED_ID.test(id);
 }
 
@@ -67,7 +67,7 @@ export function toXPath(element: Element): string {
  * 1-based position among same-tag siblings, or null when the element is the only
  * one of its tag — omitting the index keeps the path shorter and less brittle.
  */
-function siblingIndex(element: Element): number | null {
+export function siblingIndex(element: Element): number | null {
   const parent = element.parentElement;
   if (!parent) return null;
 
@@ -77,7 +77,7 @@ function siblingIndex(element: Element): number | null {
 }
 
 /** XPath has no escape syntax; strings containing both quote types need concat(). */
-function quote(value: string): string {
+export function quote(value: string): string {
   if (!value.includes("'")) return `'${value}'`;
   if (!value.includes('"')) return `"${value}"`;
   return `concat('${value.split("'").join(`',"'",'`)}')`;

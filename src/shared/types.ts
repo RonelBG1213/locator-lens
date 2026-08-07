@@ -1,5 +1,13 @@
 /** Domain types shared by the content script, the side panel and the tests. */
 
+/** A rectangle in CSS pixels. */
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /** How a locator identifies its element. Drives base scoring in core/rank.ts. */
 export type LocatorKind =
   | 'role'
@@ -52,13 +60,24 @@ export interface ElementInfo {
   checked: boolean | 'mixed' | null;
   /** Outermost-first breadcrumb of ancestors, e.g. ['body', 'form#login', 'div.row']. */
   ancestry: string[];
-  boundingBox: { x: number; y: number; width: number; height: number } | null;
+  /** Frame-local, and only true at pick time — screenshots re-measure, see CaptureGeometry. */
+  boundingBox: Rect | null;
 }
 
 /** Non-Playwright selector forms, for pasting into DevTools or other tools. */
 export interface RawSelectors {
+  /** Absolute path from the document root, or the nearest usable id. */
   css: string;
   xpath: string;
+  /**
+   * The same element expressed relative to its nearest uniquely identifiable
+   * neighbour, using CSS combinators and XPath axes. Null when no anchor was
+   * found within range — see core/axisSelectors.ts for the bounds.
+   */
+  axisCss: string | null;
+  axisXpath: string | null;
+  /** Human-readable anchor, e.g. `#gallery, 2 levels up`. Null when there is none. */
+  anchor: string | null;
 }
 
 /**
@@ -101,18 +120,82 @@ export interface PickResult {
   retarget?: Retarget;
 }
 
-/** Result of evaluating a user-typed selector in the live editor. */
-export interface EvaluationResult {
-  selector: string;
-  /** null when the selector failed to parse. */
-  matchCount: number | null;
-  /** Parse or resolution error, shown inline in the editor. */
-  error: string | null;
+/** What one frame found when it evaluated the selector against its own document. */
+export interface FrameEvaluation {
+  /** Hops from the top document down to this frame. Empty for the main frame. */
+  frameChain: FrameHop[];
+  matchCount: number;
   /** Short previews of the first few matches, e.g. `<button>Save</button>`. */
   previews: string[];
-  /** True when matchCount > 1 — Playwright would throw in strict mode. */
-  strictViolation: boolean;
+  /**
+   * True for the frame the user's expression actually addresses — the main frame
+   * for a bare selector, or the frame reached by its frameLocator() hops.
+   */
+  isTarget: boolean;
+  /** Engine error resolving the selector here. Distinct from zero matches. */
+  error: string | null;
 }
+
+/**
+ * Result of evaluating a user-typed selector in the live editor.
+ *
+ * Deliberately NOT a single total. `page.getByRole(...)` does not search iframes
+ * in real Playwright, so summing matches across frames would report a number no
+ * test could reproduce. Instead the frame the user addressed is authoritative,
+ * and matches elsewhere are listed separately with the prefix they would need.
+ */
+export interface EvaluationResult {
+  /** Exactly what the user typed. */
+  input: string;
+  /** Resolved bare selector for the target frame; null when parsing failed. */
+  selector: string | null;
+  /** Parse error, shown inline in the editor. */
+  error: string | null;
+  /** The addressed frame's result. Null on a parse error or unreachable frame. */
+  target: FrameEvaluation | null;
+  /** Frames that also match but need a different frameLocator() prefix. */
+  otherFrames: FrameEvaluation[];
+  /** True when the target frame has more than one match. */
+  strictViolation: boolean;
+  /** Frames that did not answer before the collection deadline. */
+  unreachableFrames: number;
+}
+
+/** What a screenshot is a picture of. */
+export type CaptureTarget = 'element' | 'viewport';
+
+/**
+ * Everything the panel needs to turn a visible-tab capture into the requested
+ * picture, measured in the page at the moment of capture.
+ */
+export interface CaptureGeometry {
+  /**
+   * What to crop to, in TOP-document viewport coordinates. A pick three iframes
+   * deep has each ancestor frame's offset already folded in.
+   */
+  rect: Rect;
+  /**
+   * The top frame's CSS viewport. Divided into the captured image's pixel width
+   * this gives the capture scale, which is the only reliable way to learn it —
+   * devicePixelRatio and page zoom both feed into it and can disagree.
+   */
+  viewport: { width: number; height: number };
+  /**
+   * Box to mark on the finished image, same coordinate space as `rect`. Only
+   * ever set for a viewport shot, where the point is to say which element in the
+   * picture is the one being talked about. Null when nothing is picked, or when
+   * the pick is scrolled outside the shot.
+   */
+  highlight?: Rect | null;
+}
+
+/**
+ * Answer to PSP_CAPTURE_BEGIN. Failure is a value, not an exception: "the
+ * element scrolled out of existence" is an ordinary thing for the panel to say.
+ */
+export type CaptureStart =
+  | { ok: true; geometry: CaptureGeometry }
+  | { ok: false; error: string };
 
 /** One element captured into the multi-pick session, for POM export. */
 export interface SessionEntry {

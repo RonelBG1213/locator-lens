@@ -68,9 +68,39 @@ export async function copyToClipboard(text: string): Promise<void> {
   await navigator.clipboard.writeText(text);
 }
 
+/** PNG to the clipboard. Rejects if the panel does not have focus. */
+export async function copyImageToClipboard(blob: Blob): Promise<void> {
+  await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+}
+
+/**
+ * Photograph the visible viewport of the tab's window.
+ *
+ * Needs no permission the extension does not already hold: `activeTab` covers
+ * captureVisibleTab for the tab the user invoked us on. Null when Chrome refuses
+ * — an activeTab grant lapses on cross-origin navigation, and restricted pages
+ * are never capturable.
+ */
+export async function captureVisibleTab(tabId: number): Promise<string | null> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return await chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+  } catch {
+    return null;
+  }
+}
+
 /** Offer generated source as a download without needing the downloads permission. */
 export function downloadText(fileName: string, text: string): void {
-  const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  download(fileName, new Blob([text], { type: 'text/plain' }));
+}
+
+export function downloadBlob(fileName: string, blob: Blob): void {
+  download(fileName, blob);
+}
+
+function download(fileName: string, blob: Blob): void {
+  const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = fileName;

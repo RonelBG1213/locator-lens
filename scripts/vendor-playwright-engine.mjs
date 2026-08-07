@@ -26,6 +26,7 @@
  *
  * Run with: npm run vendor
  */
+import * as esbuild from 'esbuild';
 import { createRequire } from 'node:module';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -36,6 +37,7 @@ const projectRoot = resolve(here, '..');
 const require = createRequire(import.meta.url);
 
 const OUT_FILE = resolve(projectRoot, 'src/vendor/injectedScript.generated.js');
+const PARSER_OUT_FILE = resolve(projectRoot, 'src/vendor/locatorParser.generated.js');
 
 /** Resolve the installed playwright-core package root. */
 function playwrightCoreRoot() {
@@ -119,4 +121,58 @@ writeFileSync(OUT_FILE, banner + source + footer, 'utf8');
 console.log(
   `Vendored playwright-core@${version} injected script ` +
     `(${(source.length / 1024).toFixed(0)} KB from ${layout}) -> src/vendor/injectedScript.generated.js`,
+);
+
+/**
+ * Selector-text tooling for the live editor:
+ *
+ *   unsafeLocatorOrSelectorAsSelector — `getByRole('button', { name: 'Save' })`
+ *     back into `internal:role=button[name="Save"i]`, so the editor accepts the
+ *     same text you paste out of a test. Raw selector syntax passes through.
+ *   splitSelectorByFrame / stringifySelector — split a selector at its
+ *     `internal:control=enter-frame` boundaries, which is how frameLocator()
+ *     hops are encoded. Used to route evaluation into the right frame. Doing
+ *     this by string-splitting on ">>" would corrupt quoted text selectors.
+ *
+ * Unlike the injected script these are ordinary isomorphic CommonJS, so esbuild
+ * bundles them directly. Entry paths are absolute to bypass the package's
+ * `exports` map, which does not expose `lib/`.
+ */
+const locatorParserEntry = resolve(root, 'lib/utils/isomorphic/locatorParser.js');
+const selectorParserEntry = resolve(root, 'lib/utils/isomorphic/selectorParser.js');
+
+await esbuild.build({
+  // A shim entry rather than the files themselves: both are CommonJS, and
+  // bundling those to ESM yields only a default export. Re-exporting the named
+  // bindings through stdin gives us a clean ESM surface.
+  stdin: {
+    contents: [
+      `export { unsafeLocatorOrSelectorAsSelector } from ${JSON.stringify(locatorParserEntry)};`,
+      `export { splitSelectorByFrame, stringifySelector, parseSelector } from ${JSON.stringify(selectorParserEntry)};`,
+    ].join('\n'),
+    resolveDir: projectRoot,
+    loader: 'js',
+  },
+  outfile: PARSER_OUT_FILE,
+  bundle: true,
+  format: 'esm',
+  platform: 'browser',
+  target: 'chrome114',
+  logLevel: 'warning',
+  banner: {
+    js:
+      `/**\n` +
+      ` * GENERATED FILE — DO NOT EDIT BY HAND.\n` +
+      ` *\n` +
+      ` * Playwright's isomorphic selector-text tooling, bundled from\n` +
+      ` * playwright-core@${version} (lib/utils/isomorphic/{locatorParser,selectorParser}.js)\n` +
+      ` * by scripts/vendor-playwright-engine.mjs.\n` +
+      ` *\n` +
+      ` * Regenerate with: npm run vendor\n` +
+      ` */\n/* eslint-disable */\n// @ts-nocheck`,
+  },
+});
+
+console.log(
+  `Vendored playwright-core@${version} selector-text tooling -> src/vendor/locatorParser.generated.js`,
 );

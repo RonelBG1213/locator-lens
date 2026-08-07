@@ -46,12 +46,14 @@ type BoxKind = 'hover' | 'match' | 'ambiguous';
 
 let root: ShadowRoot | null = null;
 let layer: HTMLDivElement | null = null;
+let suppressed = false;
 
 function ensureLayer(): HTMLDivElement {
   if (layer?.isConnected) return layer;
 
   const host = document.createElement('div');
   host.id = HOST_ID;
+  applySuppression(host);
   // Attach to documentElement, not body: some pages replace body wholesale.
   document.documentElement.appendChild(host);
 
@@ -109,6 +111,27 @@ export function showMatches(elements: Element[]): void {
 
 export function clear(): void {
   if (layer) layer.replaceChildren();
+}
+
+/**
+ * Hide the overlay without forgetting what it was showing.
+ *
+ * A screenshot photographs the page as it stands, so the picker's own highlight
+ * boxes would end up in the picture. Hiding rather than clearing means the boxes
+ * are still there when the capture is over — the selector the user is editing
+ * stays highlighted across a screenshot instead of blinking out.
+ *
+ * Inline display beats the `:host { all: initial }` rule inside the shadow root,
+ * and clearing it back to '' restores exactly what that rule specified.
+ */
+export function setSuppressed(value: boolean): void {
+  if (suppressed === value) return;
+  suppressed = value;
+  if (root) applySuppression(root.host as HTMLElement);
+}
+
+function applySuppression(host: HTMLElement): void {
+  host.style.display = suppressed ? 'none' : '';
 }
 
 /** Remove the overlay entirely; used when pick mode is turned off. */

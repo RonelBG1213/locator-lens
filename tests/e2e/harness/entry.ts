@@ -7,9 +7,11 @@
  */
 import { candidatesFor, detectRetarget } from '../../../src/engine/generate.js';
 import { inspect } from '../../../src/engine/inspect.js';
-import { evaluate } from '../../../src/engine/query.js';
-import { setTestIdAttribute } from '../../../src/engine/bootstrap.js';
+import { evaluateLocal } from '../../../src/engine/query.js';
+import { parseLocatorInput } from '../../../src/core/locatorInput.js';
+import { setTestIdAttribute, testIdAttribute } from '../../../src/engine/bootstrap.js';
 import { rank } from '../../../src/core/rank.js';
+import { toAxisSelectors } from '../../../src/core/axisSelectors.js';
 import { toCssPath, toXPath } from '../../../src/core/rawSelectors.js';
 import { pageExpression } from '../../../src/shared/expression.js';
 import type { Candidate, ElementInfo, Retarget } from '../../../src/shared/types.js';
@@ -27,6 +29,10 @@ export interface Analysis {
   info: ElementInfo;
   css: string;
   xpath: string;
+  /** Anchored forms; null when no anchor was found within range. */
+  axisCss: string | null;
+  axisXpath: string | null;
+  anchor: string | null;
   retarget: Retarget | null;
 }
 
@@ -81,6 +87,7 @@ const api = {
       info: inspect(element),
       css: toCssPath(element),
       xpath: toXPath(element),
+      ...toAxisSelectors(element, testIdAttribute()),
       retarget: detectRetarget(element, best.selector),
     };
   },
@@ -93,7 +100,27 @@ const api = {
     return api.analyze(0);
   },
 
-  evaluate,
+  /**
+   * Main-frame-only evaluation, mirroring what the content script does before it
+   * fans out across frames. Cross-frame aggregation needs the real frame tree and
+   * is covered by tests/e2e/extension.spec.ts instead.
+   */
+  evaluate(input: string) {
+    const parsed = parseLocatorInput(input, testIdAttribute());
+    if (!parsed.ok)
+      return { selector: null, error: parsed.error, matchCount: null, previews: [], strictViolation: false, frameHops: 0 };
+
+    const local = evaluateLocal(parsed.value.selector);
+    return {
+      selector: parsed.value.selector,
+      error: local.error,
+      // null, not 0: a rejected selector is not the same as an empty page.
+      matchCount: local.error === null ? local.elements.length : null,
+      previews: local.previews,
+      strictViolation: local.elements.length > 1,
+      frameHops: parsed.value.frameSelectors.length,
+    };
+  },
 
   /** Tag a target so the test can confirm Playwright resolved the same node. */
   mark(index: number): boolean {
@@ -112,10 +139,9 @@ const api = {
     }
   },
 
-  /** Resolve a selector via the vendored engine, returning the marked flag. */
-  resolvesToMarked(selector: string): boolean {
-    const result = evaluate(selector);
-    return result.matchCount === 1;
+  /** Resolve a selector via the vendored engine and report whether it is unique. */
+  resolvesUniquely(selector: string): boolean {
+    return evaluateLocal(selector).elements.length === 1;
   },
 };
 

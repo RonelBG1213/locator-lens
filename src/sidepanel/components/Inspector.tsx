@@ -79,17 +79,30 @@ export function Inspector({ info, raw, onCopy }: Props) {
           <p class="hint">
             Reference only — for DevTools or non-Playwright tools. Prefer the ranked locators above.
           </p>
-          <div class="row">
-            <code class="grow" style="font-size:11.5px;word-break:break-all">{raw.css}</code>
-            <button class="link" onClick={() => onCopy(raw.css)}>copy</button>
-          </div>
-          <div class="row">
-            <code class="grow" style="font-size:11.5px;word-break:break-all">{raw.xpath}</code>
-            <button class="link" onClick={() => onCopy(raw.xpath)}>copy</button>
-          </div>
+
+          {raw.anchor && (
+            <>
+              <p class="hint">Anchored on {raw.anchor}</p>
+              {raw.axisCss && <SelectorRow value={raw.axisCss} onCopy={onCopy} />}
+              {raw.axisXpath && <SelectorRow value={raw.axisXpath} onCopy={onCopy} />}
+              <p class="hint">Absolute</p>
+            </>
+          )}
+
+          <SelectorRow value={raw.css} onCopy={onCopy} />
+          <SelectorRow value={raw.xpath} onCopy={onCopy} />
         </div>
       </section>
     </>
+  );
+}
+
+function SelectorRow({ value, onCopy }: { value: string; onCopy: (text: string) => void }) {
+  return (
+    <div class="row">
+      <code class="grow" style="font-size:11.5px;word-break:break-all">{value}</code>
+      <button class="link" onClick={() => onCopy(value)}>copy</button>
+    </div>
   );
 }
 

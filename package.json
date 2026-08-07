@@ -6,6 +6,7 @@
   "description": "Chrome extension that picks reliable Playwright locators by clicking elements, using Playwright's own selector engine.",
   "scripts": {
     "vendor": "node scripts/vendor-playwright-engine.mjs",
+    "vendor:upgrade": "node scripts/upgrade-playwright.mjs",
     "build": "node scripts/build.mjs",
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit",

@@ -176,6 +176,23 @@ test('reports a parse error instead of throwing on invalid input', async ({ page
   expect(result.error).not.toContain('\n');
 });
 
+/** Resolve a plain CSS selector in the page: how many it matched, and whether the first is marked. */
+function byCss(page: Page, selector: string) {
+  return page.evaluate((s) => {
+    const found = document.querySelectorAll(s);
+    return { count: found.length, marked: found[0]?.getAttribute('data-psp-roundtrip') ?? null };
+  }, selector);
+}
+
+/** The same for a plain XPath expression. */
+function byXPath(page: Page, expression: string) {
+  return page.evaluate((s) => {
+    const found = document.evaluate(s, document, null, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE, null);
+    const first = found.snapshotItem(0) as Element | null;
+    return { count: found.snapshotLength, marked: first?.getAttribute('data-psp-roundtrip') ?? null };
+  }, expression);
+}
+
 test('raw CSS and XPath both resolve back to the picked element', async ({ page }) => {
   for (const css of ['#save-btn', '#email', '#aria button', '#table-section td']) {
     const analysis = await page.evaluate((s) => window.__psp.analyzeSelector(s), css);
@@ -183,19 +200,88 @@ test('raw CSS and XPath both resolve back to the picked element', async ({ page 
 
     await page.evaluate(() => window.__psp.mark(0));
 
-    const viaCss = await page.evaluate(
-      (s) => document.querySelector(s)?.getAttribute('data-psp-roundtrip') ?? null,
-      analysis!.css,
+    expect((await byCss(page, analysis!.css)).marked, `css for ${css}: ${analysis!.css}`).toBe('yes');
+    expect((await byXPath(page, analysis!.xpath)).marked, `xpath for ${css}: ${analysis!.xpath}`).toBe(
+      'yes',
     );
-    const viaXpath = await page.evaluate((s) => {
-      const node = document.evaluate(s, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null)
-        .singleNodeValue as Element | null;
-      return node?.getAttribute('data-psp-roundtrip') ?? null;
-    }, analysis!.xpath);
 
-    expect(viaCss, `css for ${css}: ${analysis!.css}`).toBe('yes');
-    expect(viaXpath, `xpath for ${css}: ${analysis!.xpath}`).toBe('yes');
+    // The anchored forms are optional, but when offered they carry a stronger
+    // promise than the absolute ones: exactly one match, and it is this element.
+    if (analysis!.axisCss) {
+      const result = await byCss(page, analysis!.axisCss);
+      expect(result, `axis css for ${css}: ${analysis!.axisCss}`).toEqual({ count: 1, marked: 'yes' });
+    }
+    if (analysis!.axisXpath) {
+      const result = await byXPath(page, analysis!.axisXpath);
+      expect(result, `axis xpath for ${css}: ${analysis!.axisXpath}`).toEqual({
+        count: 1,
+        marked: 'yes',
+      });
+    }
 
     await page.evaluate(() => window.__psp.unmark());
   }
+});
+
+test.describe('anchored CSS and XPath', () => {
+  /** Analyse, mark, and confirm both anchored forms resolve uniquely to the target. */
+  async function anchored(page: Page, css: string) {
+    const analysis = await page.evaluate((s) => window.__psp.analyzeSelector(s), css);
+    expect(analysis, css).not.toBeNull();
+
+    await page.evaluate(() => window.__psp.mark(0));
+    if (analysis!.axisCss)
+      expect(await byCss(page, analysis!.axisCss), analysis!.axisCss).toEqual({
+        count: 1,
+        marked: 'yes',
+      });
+    if (analysis!.axisXpath)
+      expect(await byXPath(page, analysis!.axisXpath), analysis!.axisXpath).toEqual({
+        count: 1,
+        marked: 'yes',
+      });
+    await page.evaluate(() => window.__psp.unmark());
+
+    return analysis!;
+  }
+
+  test('anchors on an ancestor and descends with the descendant axis', async ({ page }) => {
+    const analysis = await anchored(page, '#axis-gallery img');
+
+    expect(analysis.anchor).toBe('#axis-gallery, 2 levels up');
+    expect(analysis.axisCss).toBe('#axis-gallery img');
+    expect(analysis.axisXpath).toBe("//*[@id='axis-gallery']/descendant::img");
+  });
+
+  test('gives up rather than reach past the fifth parent', async ({ page }) => {
+    // The only anchor is seven levels up, and the element has no siblings. An
+    // unbounded search would happily emit `#axis-deep span`; that is the point.
+    const analysis = await page.evaluate(() =>
+      window.__psp.analyzeSelector('#axis-deep span'),
+    );
+
+    expect(analysis?.anchor).toBeNull();
+    expect(analysis?.axisCss).toBeNull();
+    expect(analysis?.axisXpath).toBeNull();
+    // The absolute forms are still offered — only the anchored ones are withheld.
+    expect(analysis?.css).toBeTruthy();
+    expect(analysis?.xpath).toBeTruthy();
+  });
+
+  test('falls back to a preceding sibling when no ancestor is identifiable', async ({ page }) => {
+    const analysis = await anchored(page, '#axis-preceding-root span');
+
+    expect(analysis.anchor).toBe('#axis-qty, 1 sibling before');
+    expect(analysis.axisCss).toBe('#axis-qty + span');
+    expect(analysis.axisXpath).toBe("//*[@id='axis-qty']/following-sibling::span");
+  });
+
+  test('reaches backwards with :has() when the only anchor follows the target', async ({ page }) => {
+    const analysis = await anchored(page, '#axis-following-root span');
+
+    expect(analysis.anchor).toBe('#axis-caption, 1 sibling after');
+    // CSS has no backwards combinator, so the relationship becomes a condition.
+    expect(analysis.axisCss).toBe('span:has(+ #axis-caption)');
+    expect(analysis.axisXpath).toBe("//*[@id='axis-caption']/preceding-sibling::span");
+  });
 });
