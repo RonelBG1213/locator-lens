@@ -397,7 +397,9 @@ in plain Node and is unit tested without a browser.
 | `src/sidepanel/` | Preact UI, the chrome.* bridge, and screenshot cropping |
 | `src/shared/` | Message and domain types, plus the expression renderer both sides use |
 | `src/background/` | Service worker: opens the panel, injects the content script |
-| `scripts/` | `vendor-playwright-engine.mjs` (extraction) and `build.mjs` (~95 lines of esbuild) |
+| `assets/` | `icons/` (derived from one master PNG) and `store/` (listing tiles and screenshots) — both generated, both committed |
+| `scripts/` | `vendor-playwright-engine.mjs` (extraction), `build.mjs` (~100 lines of esbuild), plus icon, store-asset and packaging scripts |
+| `docs/` | [Chrome Web Store submission](docs/chrome-web-store-submission.md) — every dashboard field, with the reasoning behind each answer — and the [privacy policy](docs/privacy-policy.md) |
 
 The blast radius of the engine dependency is contained: everything goes through
 `src/engine/*`, so swapping it touches four files.
@@ -405,9 +407,18 @@ The blast radius of the engine dependency is contained: everything goes through
 ## Development
 
 ```bash
-npm run watch      # esbuild watch -> dist/
-npm run typecheck  # tsc --noEmit
+npm run watch         # esbuild watch -> dist/
+npm run typecheck     # tsc --noEmit
+npm run icons         # assets/icons/icon-master.png -> icon-{16,32,48,128}.png
+npm run store:assets  # listing tiles and screenshots -> assets/store/
+npm run package       # build + zip -> release/locator-lens-<version>.zip
 ```
+
+`npm run package` rather than `Compress-Archive`: PowerShell 5.1 writes
+subdirectory entries with a backslash, which the ZIP spec forbids, and Chrome
+then cannot resolve `icons/icon-16.png` from the manifest. `scripts/package.mjs`
+writes the entries by hand and checks that every file the manifest names is
+present.
 
 After a rebuild, reload the extension in `chrome://extensions` — there is no HMR.
 The panel can be reopened with the toolbar icon; the content script re-injects
@@ -551,3 +562,13 @@ next one and needs nothing else to change.
 | Chrome would not capture this tab | `activeTab` expired, or the tab is restricted. Click the toolbar icon, or enable **Stay connected** |
 | Changes don't show up after a rebuild | Reload the extension in `chrome://extensions`. There is no HMR |
 | `npm run build` fails on a missing vendored engine | Run `npm run vendor` first |
+| `npm run build` fails on a missing icon | Run `npm run icons` first |
+
+## Licence
+
+[MIT](LICENSE) for this project's own source.
+
+The vendored `playwright-core` selector engine under `src/vendor/` is Apache-2.0.
+Its notice is [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt), which the build
+copies into `dist/` so it travels inside the packaged extension — an Apache-2.0
+obligation, and one esbuild's `legalComments: 'none'` would otherwise drop.

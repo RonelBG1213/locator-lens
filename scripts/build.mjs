@@ -15,8 +15,16 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const outdir = resolve(root, 'dist');
 const watch = process.argv.includes('--watch');
 
+const ICON_SIZES = [16, 32, 48, 128];
+
 if (!existsSync(resolve(root, 'src/vendor/injectedScript.generated.js')))
   throw new Error('Missing vendored engine. Run `npm run vendor` first.');
+
+// The Web Store rejects a package with no icons, and an unpacked build without
+// them shows a grey placeholder letter — both worth failing early over.
+for (const size of ICON_SIZES)
+  if (!existsSync(resolve(root, `assets/icons/icon-${size}.png`)))
+    throw new Error(`Missing assets/icons/icon-${size}.png. Run \`npm run icons\`.`);
 
 rmSync(outdir, { recursive: true, force: true });
 mkdirSync(outdir, { recursive: true });
@@ -40,7 +48,11 @@ const manifest = {
   // survive navigation during a session. Nothing is requested until they ask.
   permissions: ['activeTab', 'scripting', 'sidePanel', 'storage'],
   optional_host_permissions: ['<all_urls>'],
-  action: { default_title: 'Locator Lens' },
+  icons: Object.fromEntries(ICON_SIZES.map((s) => [s, `icons/icon-${s}.png`])),
+  action: {
+    default_title: 'Locator Lens',
+    default_icon: Object.fromEntries(ICON_SIZES.map((s) => [s, `icons/icon-${s}.png`])),
+  },
   background: { service_worker: 'background.js', type: 'module' },
   side_panel: { default_path: 'sidepanel.html' },
   commands: {
@@ -59,6 +71,13 @@ copyFileSync(resolve(root, 'src/sidepanel/index.html'), resolve(outdir, 'sidepan
 // the repo — and it cannot ride along inside the bundle, since esbuild is set to
 // legalComments: 'none' below.
 copyFileSync(resolve(root, 'THIRD_PARTY_NOTICES.txt'), resolve(outdir, 'THIRD_PARTY_NOTICES.txt'));
+
+mkdirSync(resolve(outdir, 'icons'), { recursive: true });
+for (const size of ICON_SIZES)
+  copyFileSync(
+    resolve(root, `assets/icons/icon-${size}.png`),
+    resolve(outdir, `icons/icon-${size}.png`),
+  );
 
 const common = {
   bundle: true,
