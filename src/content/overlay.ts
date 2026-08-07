@@ -7,7 +7,7 @@
  * it never intercepts the click we are trying to capture.
  */
 
-const HOST_ID = 'playwright-selector-picker-overlay';
+const HOST_ID = 'locator-lens-overlay';
 
 const STYLES = `
   :host { all: initial; }

@@ -275,7 +275,7 @@ function App() {
   return (
     <>
       <header>
-        <h1>Playwright Selector Picker</h1>
+        <h1>Locator Lens</h1>
         {toast && <span class="badge plain">{toast}</span>}
         <button
           class="primary"

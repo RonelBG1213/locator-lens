@@ -1,5 +1,5 @@
 {
-  "name": "playwright-selector-plugin",
+  "name": "locator-lens",
   "version": "0.1.0",
   "private": true,
   "type": "module",

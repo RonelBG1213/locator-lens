@@ -1,8 +1,13 @@
-# Playwright Selector Picker
+# Locator Lens
 
 A standalone Chrome extension that turns "click an element" into a reliable
 Playwright locator — scored, explained, and verified against the page before you
 paste it into a test.
+
+> Unofficial. Not affiliated with, endorsed by, or sponsored by Microsoft or the
+> Playwright project. Bundles `playwright-core` (Apache-2.0) — see
+> [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt), which ships inside the
+> packaged extension as well.
 
 No companion server, no CDP connection, no network calls. Everything runs in the
 browser.
@@ -65,8 +70,8 @@ npm run build     # -> dist/
 Then in Chrome: `chrome://extensions` → enable **Developer mode** → **Load
 unpacked** → select `dist/`.
 
-Requires Chrome 114+ (for the side panel API). The extension is unpacked and
-unsigned — it is a development tool, not a Web Store listing.
+Requires Chrome 114+ (for the side panel API). Loading unpacked is the
+development path; the packaged build is what goes to the Chrome Web Store.
 
 > `npm run build` refuses to run if `src/vendor/injectedScript.generated.js` is
 > missing. Run `npm run vendor` first. The vendored files *are* committed, so a

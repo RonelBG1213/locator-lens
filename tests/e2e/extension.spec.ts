@@ -422,7 +422,7 @@ test.describe('screenshot geometry', () => {
 
     const display = (target: typeof page | typeof frame) =>
       target
-        .locator('#playwright-selector-picker-overlay')
+        .locator('#locator-lens-overlay')
         .evaluate((el) => (el as HTMLElement).style.display);
 
     await expect.poll(() => display(page)).toBe('');
@@ -452,7 +452,7 @@ test.describe('screenshot geometry', () => {
 
     // A failed capture must not leave the page unable to draw highlights.
     const display = await page
-      .locator('#playwright-selector-picker-overlay')
+      .locator('#locator-lens-overlay')
       .evaluate((el) => (el as HTMLElement).style.display);
     expect(display).toBe('');
   });
@@ -465,7 +465,7 @@ test('the overlay does not leak into the page or its accessibility tree', async 
   await send(tabId, { type: 'PSP_HIGHLIGHT', selector: 'internal:role=button[name="Delete"i]' });
 
   // A closed shadow root means the host page can see the container but nothing inside.
-  const host = page.locator('#playwright-selector-picker-overlay');
+  const host = page.locator('#locator-lens-overlay');
   await expect(host).toHaveCount(1);
   expect(await host.evaluate((el) => el.shadowRoot)).toBeNull();
   // Nothing the picker draws should be findable as page content.

@@ -24,10 +24,15 @@ mkdirSync(outdir, { recursive: true });
 /** @type {chrome.runtime.ManifestV3} */
 const manifest = {
   manifest_version: 3,
-  name: 'Playwright Selector Picker',
+  name: 'Locator Lens',
   version: '0.1.0',
+  // "Playwright" stays out of the name and appears only descriptively here: it is
+  // what the tool works with, not who made it. The disclaimer is deliberate — the
+  // extension bundles playwright-core, so the affiliation question is a fair one
+  // to answer up front rather than in a review reply.
   description:
-    "Click any element to get a reliable Playwright locator, verified with Playwright's own selector engine.",
+    'Click any element to get a ranked, verified locator for your Playwright tests. Unofficial; not affiliated with Microsoft.',
+  homepage_url: 'https://github.com/RonelBG1213/locator-lens',
   minimum_chrome_version: '114',
   // activeTab keeps the install prompt free of "read your data on all websites".
   // It is granted per toolbar click and revoked on cross-origin navigation, so the
@@ -35,7 +40,7 @@ const manifest = {
   // survive navigation during a session. Nothing is requested until they ask.
   permissions: ['activeTab', 'scripting', 'sidePanel', 'storage'],
   optional_host_permissions: ['<all_urls>'],
-  action: { default_title: 'Playwright Selector Picker' },
+  action: { default_title: 'Locator Lens' },
   background: { service_worker: 'background.js', type: 'module' },
   side_panel: { default_path: 'sidepanel.html' },
   commands: {
@@ -48,6 +53,12 @@ const manifest = {
 
 writeFileSync(resolve(outdir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 copyFileSync(resolve(root, 'src/sidepanel/index.html'), resolve(outdir, 'sidepanel.html'));
+
+// Apache-2.0 obliges us to ship the licence with the binary, and `content.js`
+// carries the vendored engine. It has to travel in the package, not just sit in
+// the repo — and it cannot ride along inside the bundle, since esbuild is set to
+// legalComments: 'none' below.
+copyFileSync(resolve(root, 'THIRD_PARTY_NOTICES.txt'), resolve(outdir, 'THIRD_PARTY_NOTICES.txt'));
 
 const common = {
   bundle: true,
