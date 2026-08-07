@@ -1,0 +1,28 @@
+{
+  "name": "playwright-selector-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chrome extension that picks reliable Playwright locators by clicking elements, using Playwright's own selector engine.",
+  "scripts": {
+    "vendor": "node scripts/vendor-playwright-engine.mjs",
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "test": "npm run typecheck && npm run test:unit && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.58.2",
+    "@types/chrome": "^0.0.287",
+    "@types/node": "^22.10.2",
+    "esbuild": "^0.24.2",
+    "playwright-core": "1.58.2",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "preact": "^10.25.3"
+  }
+}

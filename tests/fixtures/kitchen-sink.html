@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Kitchen Sink</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; max-width: 760px; }
+      section { border: 1px solid #ccc; padding: 12px; margin-bottom: 16px; }
+      .t-Button--hot { background: #c33; color: #fff; padding: 4px 10px; }
+      table { border-collapse: collapse; }
+      td, th { border: 1px solid #ccc; padding: 4px 8px; }
+      iframe { width: 100%; height: 120px; border: 1px solid #999; }
+    </style>
+  </head>
+  <body>
+    <h1>Kitchen Sink</h1>
+
+    <!-- Clean, uniquely-named controls: should rank as role-based and score high. -->
+    <section id="clean">
+      <h2>Clean controls</h2>
+      <button id="save-btn">Save changes</button>
+      <a href="#somewhere">Read the docs</a>
+      <label for="email">Email address</label>
+      <input id="email" type="email" />
+      <input type="search" placeholder="Search orders" aria-label="Search orders" />
+      <input type="checkbox" id="terms" /><label for="terms">Accept terms</label>
+      <select aria-label="Country">
+        <option>Ireland</option>
+        <option>Norway</option>
+      </select>
+      <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" alt="Company logo" />
+      <div data-testid="order-total">Total: 42</div>
+    </section>
+
+    <!-- Two identical buttons: neither is unique on its own, so the generator must
+         scope them. Exercises the ambiguity penalty and strict-mode warning. -->
+    <section id="ambiguous">
+      <h2>Ambiguous</h2>
+      <div id="row-one"><button class="t-Button--hot">Delete</button></div>
+      <div id="row-two"><button class="t-Button--hot">Delete</button></div>
+    </section>
+
+    <!-- Hostile markup: generated ids, hashed classes, styling-only hooks. These
+         must attract penalties from core/rules.ts. -->
+    <section id="hostile">
+      <h2>Hostile markup</h2>
+      <button id="B48291736">Legacy engine button</button>
+      <div class="css-1a2b3c4d5e">Hashed class wrapper</div>
+      <div class="col-6 mt-4"><span>Styling-only hooks</span></div>
+      <p>Order #10093 placed on 12/03/2025 for $84.10</p>
+    </section>
+
+    <!-- Accessible-name computation that a hand-rolled generator would get wrong. -->
+    <section id="aria">
+      <h2>ARIA</h2>
+      <span id="tos-label">I agree to the terms of service</span>
+      <span role="checkbox" aria-checked="false" aria-labelledby="tos-label" tabindex="0"></span>
+      <button aria-label="Close dialog">×</button>
+      <div role="button" tabindex="0" title="Refresh the report">⟳</div>
+    </section>
+
+    <section id="table-section">
+      <h2>Table</h2>
+      <table>
+        <thead>
+          <tr><th>Customer</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Acme Ltd</td><td>Active</td><td><button>Edit</button></td></tr>
+          <tr><td>Globex</td><td>Pending</td><td><button>Edit</button></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="shadow-section">
+      <h2>Shadow DOM</h2>
+      <div id="shadow-host"></div>
+    </section>
+
+    <section id="frame-section">
+      <h2>Iframe</h2>
+      <iframe id="modal-frame" title="Modal content" src="child-frame.html"></iframe>
+    </section>
+
+    <script>
+      const host = document.getElementById('shadow-host');
+      const root = host.attachShadow({ mode: 'open' });
+      root.innerHTML =
+        '<button id="shadow-btn">Inside shadow root</button>' +
+        '<label for="sh">Shadow field</label><input id="sh">';
+    </script>
+  </body>
+</html>

@@ -1,0 +1,10 @@
+node_modules/
+dist/
+scratch/
+test-results/
+playwright-report/
+tests/e2e/harness/bundle.js
+
+# NOT ignored: src/vendor/injectedScript.generated.js
+# It is committed on purpose so the extension builds without a playwright-core
+# install and so engine changes show up in review. Regenerate with `npm run vendor`.
