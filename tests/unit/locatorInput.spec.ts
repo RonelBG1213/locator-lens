@@ -24,6 +24,8 @@ describe('stripPagePrefix', () => {
     ['await page.getByRole("button")', 'getByRole("button")'],
     ['  page.getByLabel("Email")  ', 'getByLabel("Email")'],
     ['getByRole("button")', 'getByRole("button")'],
+    // C# spells the property with a capital P.
+    ['Page.GetByRole(AriaRole.Button)', 'GetByRole(AriaRole.Button)'],
     // A selector that merely starts with the letters "page" must survive intact.
     ['pagination-link', 'pagination-link'],
   ])('%s -> %s', (input, expected) => {
@@ -91,6 +93,56 @@ describe('parseLocatorInput', () => {
       const parsed = parse(`frameLocator('#a').getByText('x >> y')`);
       expect(parsed.frameSelectors).toEqual(['#a']);
       expect(parsed.selector).toContain('x >> y');
+    });
+  });
+
+  describe('languages', () => {
+    const SAVE_BUTTON = 'internal:role=button[name="Save"i]';
+
+    it.each([
+      ['python', 'get_by_role("button", name="Save")'],
+      ['java', 'getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Save"))'],
+      ['csharp', 'GetByRole(AriaRole.Button, new() { Name = "Save" })'],
+    ] as const)('reads %s locator source', (language, input) => {
+      const outcome = parseLocatorInput(input, TEST_ID, language);
+      expect(outcome.ok && outcome.value.selector).toBe(SAVE_BUTTON);
+    });
+
+    it('reads the root prefix each language emits', () => {
+      const python = parseLocatorInput('page.get_by_role("button", name="Save")', TEST_ID, 'python');
+      expect(python.ok && python.value.selector).toBe(SAVE_BUTTON);
+
+      const csharp = parseLocatorInput(
+        'Page.GetByRole(AriaRole.Button, new() { Name = "Save" })',
+        TEST_ID,
+        'csharp',
+      );
+      expect(csharp.ok && csharp.value.selector).toBe(SAVE_BUTTON);
+    });
+
+    it('does not read one language’s source as another’s', () => {
+      expect(parseLocatorInput('get_by_role("button")', TEST_ID, 'javascript').ok).toBe(false);
+      expect(parseLocatorInput("getByRole('button')", TEST_ID, 'python').ok).toBe(false);
+    });
+
+    it.each(['javascript', 'python', 'java', 'csharp'] as const)(
+      'reads raw selector syntax under %s',
+      (language) => {
+        const outcome = parseLocatorInput(SAVE_BUTTON, TEST_ID, language);
+        expect(outcome.ok && outcome.value.selector).toBe(SAVE_BUTTON);
+      },
+    );
+
+    it('splits frame hops however the language spells them', () => {
+      const outcome = parseLocatorInput(
+        'page.frame_locator("#modal").get_by_label("Note")',
+        TEST_ID,
+        'python',
+      );
+      expect(outcome.ok && outcome.value).toEqual({
+        frameSelectors: ['#modal'],
+        selector: 'internal:label="Note"i',
+      });
     });
   });
 

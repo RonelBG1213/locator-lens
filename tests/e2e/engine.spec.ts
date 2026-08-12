@@ -43,7 +43,7 @@ test('every engine member the plugin depends on is present', async ({ page }) =>
 
   expect(analysis, 'generateSelector + asLocator').not.toBeNull();
   expect(analysis!.best.selector, 'generateSelector').toMatch(/^internal:role=/);
-  expect(analysis!.best.locator, 'asLocator').toMatch(/^getByRole\(/);
+  expect(analysis!.best.locators.javascript, 'asLocator').toMatch(/^getByRole\(/);
   expect(analysis!.best.matchCount, 'parseSelector + querySelectorAll').toBe(1);
   expect(analysis!.info.role, 'getAriaRole').toBe('button');
   expect(analysis!.info.accessibleName, 'getElementAccessibleName').toBe('Save changes');
@@ -52,4 +52,42 @@ test('every engine member the plugin depends on is present', async ({ page }) =>
 
   const evaluation = await page.evaluate(() => window.__psp.evaluate('#save-btn'));
   expect(evaluation.previews[0], 'previewNode').toContain('button');
+});
+
+/**
+ * The language dropdown is only a dropdown because the engine already renders all
+ * four. If a vendoring upgrade dropped a generator, `asLocator` would silently
+ * fall back to something unusable rather than throw — hence asserting the shape
+ * of each rendering, not just that a string came back.
+ */
+test('asLocator answers in all four client languages', async ({ page }) => {
+  await page.goto('/kitchen-sink.html');
+  await page.addScriptTag({ path: HARNESS_BUNDLE });
+
+  const analysis = await page.evaluate(() => window.__psp.analyzeSelector('#save-btn'));
+  const locators = analysis!.best.locators;
+
+  expect(locators.javascript).toBe("getByRole('button', { name: 'Save changes' })");
+  expect(locators.python).toBe('get_by_role("button", name="Save changes")');
+  expect(locators.java).toBe(
+    'getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Save changes"))',
+  );
+  expect(locators.csharp).toBe('GetByRole(AriaRole.Button, new() { Name = "Save changes" })');
+});
+
+test('every language reads back its own locator source', async ({ page }) => {
+  await page.goto('/kitchen-sink.html');
+  await page.addScriptTag({ path: HARNESS_BUNDLE });
+
+  const analysis = await page.evaluate(() => window.__psp.analyzeSelector('#save-btn'));
+
+  for (const language of ['javascript', 'python', 'java', 'csharp'] as const) {
+    const source = analysis!.best.locators[language];
+    const evaluation = await page.evaluate(
+      ([input, lang]) => window.__psp.evaluate(input!, lang as 'javascript'),
+      [source, language] as const,
+    );
+    expect(evaluation.selector, language).toBe(analysis!.best.selector);
+    expect(evaluation.matchCount, language).toBe(1);
+  }
 });

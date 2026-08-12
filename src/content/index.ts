@@ -26,14 +26,17 @@ import {
 import { rank } from '../core/rank.js';
 import { toAxisSelectors } from '../core/axisSelectors.js';
 import { toCssPath, toXPath } from '../core/rawSelectors.js';
+import { frameHopLocators } from '../shared/expression.js';
 import * as overlay from './overlay.js';
 import { addHopForSource, broadcastDown, bubbleUp, isTopFrame, readFrameMessage } from './frames.js';
+import { DEFAULT_SETTINGS } from '../shared/types.js';
 import type { ContentToPanel, PanelToContent } from '../shared/messages.js';
 import type {
   CaptureStart,
   CaptureTarget,
   EvaluationResult,
   FrameEvaluation,
+  Language,
   PickResult,
 } from '../shared/types.js';
 
@@ -51,6 +54,14 @@ if (!window.__pspLoaded) {
 function start(): void {
   let mode: 'idle' | 'pick' = 'idle';
   let hovered: Element | null = null;
+
+  /**
+   * Which language the editor box parses. A plain local rather than engine state:
+   * parsing only ever happens in the top frame (see the runtime listener below),
+   * and generation needs no language at all — every rendering is produced at pick
+   * time. Kept in step with the panel by PSP_SETTINGS.
+   */
+  let language: Language = DEFAULT_SETTINGS.language;
 
   // ---------------------------------------------------------------- pick mode
 
@@ -129,7 +140,9 @@ function start(): void {
   // ------------------------------------------------------------------ picking
 
   function buildResult(element: Element): PickResult {
-    const candidates = rank(candidatesFor(element));
+    // A pick in a sub-frame will be chained onto a frameLocator() once the result
+    // has bubbled to the top, which is what Java's options class name keys off.
+    const candidates = rank(candidatesFor(element, { insideFrame: !isTopFrame() }));
     const best = candidates[0];
     const retarget = best ? detectRetarget(element, best.selector) : null;
 
@@ -178,7 +191,7 @@ function start(): void {
     input: string,
     options: { highlight?: boolean } = {},
   ): Promise<EvaluationResult> {
-    const parsed = parseLocatorInput(input, testIdAttribute());
+    const parsed = parseLocatorInput(input, testIdAttribute(), language);
 
     if (!parsed.ok) {
       if (options.highlight) clearHighlightEverywhere();
@@ -230,8 +243,9 @@ function start(): void {
 
   /** The addressed frame never reported — almost always a bad frameLocator hop. */
   function unreachableFrameError(frameSelectors: string[]): string {
-    if (frameSelectors.length === 0) return 'Could not evaluate in the main frame.';
-    return `frameLocator(${JSON.stringify(frameSelectors[0])}) did not match exactly one frame.`;
+    const [first] = frameSelectors;
+    if (first === undefined) return 'Could not evaluate in the main frame.';
+    return `${frameHopLocators(first)[language]} did not match exactly one frame.`;
   }
 
   // ------------------------------------------------------------- screenshots
@@ -373,6 +387,7 @@ function start(): void {
 
       case 'PSP_SETTINGS':
         setTestIdAttribute(message.settings.testIdAttributeName);
+        language = message.settings.language;
         sendResponse({ ok: true });
         return false;
 

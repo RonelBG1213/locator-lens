@@ -9,12 +9,12 @@
  * would throw under Playwright's strict mode.
  */
 import { DEFAULT_RULES, KIND_SCORE, type Rule } from './rules.js';
-import type { Candidate, Penalty } from '../shared/types.js';
+import type { Candidate, LocatorSources, Penalty } from '../shared/types.js';
 
 /** Shape rank() needs; matches engine/generate.ts RawCandidate. */
 export interface RankInput {
   selector: string;
-  locator: string;
+  locators: LocatorSources;
   kind: Candidate['kind'];
   matchCount: number;
   isCodegenDefault: boolean;
@@ -53,8 +53,10 @@ export function rank(candidates: RankInput[], rules: Rule[] = DEFAULT_RULES): Ca
         tier(a) - tier(b) ||
         b.score - a.score ||
         // Tie-break toward what codegen would emit, then toward the shorter locator.
+        // Always measured in JavaScript: the ranking must not shuffle itself when
+        // the user changes the language dropdown.
         Number(b.isCodegenDefault) - Number(a.isCodegenDefault) ||
-        a.locator.length - b.locator.length,
+        a.locators.javascript.length - b.locators.javascript.length,
     );
 }
 
@@ -74,7 +76,7 @@ function score(candidate: RankInput, rules: Rule[]): Candidate {
 
   return {
     selector: candidate.selector,
-    locator: candidate.locator,
+    locators: candidate.locators,
     kind: candidate.kind,
     matchCount: candidate.matchCount,
     score: clamp(base - deductions),

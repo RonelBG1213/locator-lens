@@ -31,7 +31,13 @@ export interface GenerateSelectorResult {
 }
 
 export interface InjectedScriptUtils {
-  asLocator(language: string, selector: string): string;
+  /**
+   * `isFrameLocator` says the expression will be chained onto a frameLocator()
+   * rather than onto `page`. Only Java reads it — it names its options class
+   * after the receiver (`Page.GetByRoleOptions` vs `FrameLocator.GetByRoleOptions`),
+   * so getting it wrong yields Java that does not compile.
+   */
+  asLocator(language: string, selector: string, isFrameLocator?: boolean): string;
   getAriaRole(element: Element): string | null;
   getElementAccessibleName(element: Element, includeHidden: boolean): string;
   getElementAccessibleDescription(element: Element, includeHidden: boolean): string;

@@ -132,7 +132,12 @@ test('clicking in pick mode reports a ranked result and suppresses the page clic
   await expect.poll(async () => (await received()).length).toBeGreaterThan(0);
 
   const picked = (await received()).find((m) => m.type === 'PSP_PICKED');
-  expect(picked?.result?.candidates[0]?.locator).toBe("getByRole('button', { name: 'Save changes' })");
+  expect(picked?.result?.candidates[0]?.locators).toEqual({
+    javascript: "getByRole('button', { name: 'Save changes' })",
+    python: 'get_by_role("button", name="Save changes")',
+    java: 'getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Save changes"))',
+    csharp: 'GetByRole(AriaRole.Button, new() { Name = "Save changes" })',
+  });
   expect(picked?.result?.info.role).toBe('button');
   expect(picked?.result?.frameChain).toEqual([]);
 });
@@ -165,15 +170,55 @@ test('a pick inside an iframe carries a frameLocator hop', async () => {
   const chain = picked?.result?.frameChain ?? [];
 
   expect(chain).toHaveLength(1);
-  expect(chain[0]?.locator).toContain('frameLocator(');
+  expect(chain[0]?.locators.javascript).toContain('frameLocator(');
+  expect(chain[0]?.locators.python).toContain('frame_locator(');
   expect(picked?.result?.frameChainWarning).toBeUndefined();
-  expect(picked?.result?.candidates[0]?.locator).toBe("getByRole('button', { name: 'Save from frame' })");
+  expect(picked?.result?.candidates[0]?.locators.javascript).toBe(
+    "getByRole('button', { name: 'Save from frame' })",
+  );
 
   // The full expression must work against real Playwright.
-  const expression = `page.${chain.map((h) => h.locator).join('.')}.${picked!.result!.candidates[0]!.locator}`;
+  const expression = `page.${chain.map((h) => h.locators.javascript).join('.')}.${picked!.result!.candidates[0]!.locators.javascript}`;
   const locator = new Function('page', `return ${expression};`)(page);
   await expect(locator).toHaveCount(1);
   await expect(locator).toHaveText('Save from frame');
+});
+
+/**
+ * Java names its options class after the receiver. A pick inside an iframe is
+ * chained onto a frameLocator(), so emitting `Page.GetByRoleOptions` there would
+ * produce Java that does not compile — and nothing in CI compiles Java, so this
+ * assertion is the only thing standing between that bug and a release.
+ */
+test('a pick inside an iframe names Java options for the FrameLocator receiver', async () => {
+  const tabId = await openFixture('/kitchen-sink.html');
+  const page = context.pages().at(-1)!;
+  await clearReceived();
+
+  await send(tabId, { type: 'PSP_SET_MODE', mode: 'pick' });
+  await page.frameLocator('#modal-frame').locator('#frame-save').click();
+
+  await expect.poll(async () => (await received()).length).toBeGreaterThan(0);
+
+  const picked = (await received()).find((m) => m.type === 'PSP_PICKED');
+  const java = picked?.result?.candidates[0]?.locators.java ?? '';
+
+  expect(java).toContain('new FrameLocator.GetByRoleOptions()');
+  expect(java).not.toContain('Page.GetByRoleOptions');
+});
+
+test('a pick in the top frame names Java options for the Page receiver', async () => {
+  const tabId = await openFixture('/kitchen-sink.html');
+  const page = context.pages().at(-1)!;
+  await clearReceived();
+
+  await send(tabId, { type: 'PSP_SET_MODE', mode: 'pick' });
+  await page.click('#save-btn');
+
+  await expect.poll(async () => (await received()).length).toBeGreaterThan(0);
+
+  const picked = (await received()).find((m) => m.type === 'PSP_PICKED');
+  expect(picked?.result?.candidates[0]?.locators.java).toContain('new Page.GetByRoleOptions()');
 });
 
 test.describe('live selector editor', () => {
@@ -214,7 +259,7 @@ test.describe('live selector editor', () => {
     expect(result.target?.matchCount).toBe(0);
     expect(result.otherFrames).toHaveLength(1);
     expect(result.otherFrames[0]?.matchCount).toBe(1);
-    expect(result.otherFrames[0]?.frameChain[0]?.locator).toContain('frameLocator(');
+    expect(result.otherFrames[0]?.frameChain[0]?.locators.javascript).toContain('frameLocator(');
   });
 
   test('routes a pasted frameLocator expression into that frame', async () => {
@@ -229,6 +274,34 @@ test.describe('live selector editor', () => {
     expect(result.target?.frameChain).toHaveLength(1);
     // Nothing left over: the main frame has no match to report as "elsewhere".
     expect(result.otherFrames).toEqual([]);
+  });
+
+  test('parses in whichever language PSP_SETTINGS last named', async () => {
+    const tabId = await openFixture('/kitchen-sink.html');
+    const python = 'get_by_role("button", name="Save changes")';
+
+    // The content script defaults to JavaScript, so this must not parse yet.
+    expect((await evaluate(tabId, python)).error).not.toBeNull();
+
+    try {
+      await send(tabId, {
+        type: 'PSP_SETTINGS',
+        settings: { testIdAttributeName: 'data-testid', language: 'python' },
+      });
+
+      const result = await evaluate(tabId, python);
+      expect(result.error).toBeNull();
+      expect(result.target?.matchCount).toBe(1);
+
+      // Raw selector syntax is language-neutral and must keep working regardless.
+      expect((await evaluate(tabId, '#save-btn')).target?.matchCount).toBe(1);
+    } finally {
+      // The content script outlives this test; leave it as the others expect it.
+      await send(tabId, {
+        type: 'PSP_SETTINGS',
+        settings: { testIdAttributeName: 'data-testid', language: 'javascript' },
+      });
+    }
   });
 
   test('does not sum matches across frames', async () => {

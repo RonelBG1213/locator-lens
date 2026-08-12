@@ -4,12 +4,13 @@
  */
 import { describe, expect, it } from 'vitest';
 import { grade, rank, type RankInput } from '../../src/core/rank.js';
+import { sources, uniform } from './support.js';
 
 /** A unique, clean role-based candidate — the shape everything else is compared to. */
 function candidate(overrides: Partial<RankInput> = {}): RankInput {
   return {
     selector: 'internal:role=button[name="Save"i]',
-    locator: "getByRole('button', { name: 'Save' })",
+    locators: sources(),
     kind: 'role',
     matchCount: 1,
     isCodegenDefault: true,
@@ -33,7 +34,7 @@ describe('rank', () => {
       candidate({
         kind: 'css',
         selector: '#row-one > button',
-        locator: "locator('#row-one > button')",
+        locators: uniform("locator('#row-one > button')"),
         matchCount: 1,
         isCodegenDefault: false,
       }),

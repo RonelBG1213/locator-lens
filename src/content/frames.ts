@@ -13,6 +13,7 @@
  */
 import { candidatesFor } from '../engine/generate.js';
 import { engine } from '../engine/bootstrap.js';
+import { frameHopLocators } from '../shared/expression.js';
 import { isFrameMessage, type FrameMessage } from '../shared/messages.js';
 import type { FrameHop, PickResult } from '../shared/types.js';
 
@@ -107,13 +108,11 @@ function px(value: string): number {
 /** Generate the best selector for an iframe element and render it as a hop. */
 function hopFor(iframe: Element): FrameHop {
   // Reuse the ranking pipeline's raw output: the first candidate is Playwright's
-  // own preferred selector for the frame element.
+  // own preferred selector for the frame element. Only `.selector` is used — the
+  // hop's own rendering is frameLocator(), which no language parameterises.
   const [best] = candidatesFor(iframe);
   const selector = best?.selector ?? fallbackFrameSelector(iframe);
-  return {
-    selector,
-    locator: `frameLocator(${JSON.stringify(selector)})`,
-  };
+  return { selector, locators: frameHopLocators(selector) };
 }
 
 /** Only reached if generation fails outright; index-based but always resolves. */

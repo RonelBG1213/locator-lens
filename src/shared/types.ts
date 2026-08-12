@@ -1,5 +1,34 @@
 /** Domain types shared by the content script, the side panel and the tests. */
 
+/**
+ * A Playwright client language. These are the exact keys Playwright's own
+ * `asLocator` and locator parser accept — see `generators` in the vendored
+ * engine — so they must not be renamed to something prettier.
+ */
+export type Language = 'javascript' | 'python' | 'java' | 'csharp';
+
+/** Dropdown order and labels. `javascript` covers TypeScript, which shares the API. */
+export const LANGUAGES: ReadonlyArray<{ id: Language; label: string }> = [
+  { id: 'javascript', label: 'TypeScript' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+  { id: 'csharp', label: 'C#' },
+];
+
+export function languageLabel(language: Language): string {
+  return LANGUAGES.find((entry) => entry.id === language)?.label ?? language;
+}
+
+/**
+ * One rendering per language of the same locator.
+ *
+ * Every language is rendered up front, at pick time, because only the content
+ * script has the engine — the side panel deliberately never loads it. Switching
+ * the dropdown is then a pure re-render with no round trip, and keeps working
+ * after the page has navigated away from the element that was picked.
+ */
+export type LocatorSources = Record<Language, string>;
+
 /** A rectangle in CSS pixels. */
 export interface Rect {
   x: number;
@@ -34,8 +63,8 @@ export interface Penalty {
 export interface Candidate {
   /** Playwright-internal selector, e.g. `internal:role=button[name="Save"i]`. */
   selector: string;
-  /** JS locator source, e.g. `getByRole('button', { name: 'Save' })`. */
-  locator: string;
+  /** Locator source per language, e.g. `getByRole('button', { name: 'Save' })`. */
+  locators: LocatorSources;
   kind: LocatorKind;
   /** How many elements this selector resolves to, per Playwright's own engine. */
   matchCount: number;
@@ -87,8 +116,8 @@ export interface RawSelectors {
 export interface FrameHop {
   /** Selector for the owning <iframe> element, in its parent document. */
   selector: string;
-  /** JS source for that hop, e.g. `frameLocator('#modal')`. */
-  locator: string;
+  /** Source for that hop per language, e.g. `frameLocator("#modal")`. */
+  locators: LocatorSources;
 }
 
 /**
@@ -199,9 +228,18 @@ export type CaptureStart =
 
 /** One element captured into the multi-pick session, for POM export. */
 export interface SessionEntry {
-  /** camelCase property name, unique within the session. */
+  /**
+   * Property name, unique within the session. Left empty when collected — the
+   * convention is per language (camelCase, snake_case, PascalCase), so the name
+   * is settled by withUniqueNames() at render time, not at pick time.
+   */
   name: string;
-  locator: string;
+  /**
+   * The locator chain WITHOUT its root receiver, per language, e.g.
+   * `frame_locator("#modal").get_by_role("button", name="Save")`. Root-less
+   * because each language's page object holds the page under a different name.
+   */
+  locators: LocatorSources;
   role: string | null;
   accessibleName: string;
 }
@@ -209,8 +247,11 @@ export interface SessionEntry {
 export interface Settings {
   /** Feeds Playwright's engine; must match `use.testIdAttribute` in your config. */
   testIdAttributeName: string;
+  /** Which client language the panel renders locators and page objects in. */
+  language: Language;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
   testIdAttributeName: 'data-testid',
+  language: 'javascript',
 };

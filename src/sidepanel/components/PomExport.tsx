@@ -6,11 +6,12 @@
  * the transcription work, not the design work.
  */
 import { generatePageObject, fileName, withUniqueNames } from '../../core/pom.js';
-import type { SessionEntry } from '../../shared/types.js';
+import type { Language, SessionEntry } from '../../shared/types.js';
 
 interface Props {
   pageName: string;
   entries: SessionEntry[];
+  language: Language;
   onPageNameChange: (name: string) => void;
   onRemove: (index: number) => void;
   onClear: () => void;
@@ -21,14 +22,16 @@ interface Props {
 export function PomExport({
   pageName,
   entries,
+  language,
   onPageNameChange,
   onRemove,
   onClear,
   onCopy,
   onDownload,
 }: Props) {
-  const named = withUniqueNames(entries);
-  const source = generatePageObject(pageName, entries);
+  const named = withUniqueNames(entries, language);
+  const source = generatePageObject(pageName, entries, language);
+  const file = fileName(pageName, language);
 
   return (
     <section>
@@ -68,9 +71,7 @@ export function PomExport({
 
             <div class="row">
               <button onClick={() => onCopy(source)}>Copy class</button>
-              <button onClick={() => onDownload(fileName(pageName), source)}>
-                Download {fileName(pageName)}
-              </button>
+              <button onClick={() => onDownload(file, source)}>Download {file}</button>
               <span class="grow" />
               <button class="link" onClick={onClear}>
                 clear

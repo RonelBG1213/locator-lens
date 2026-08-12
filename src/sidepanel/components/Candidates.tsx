@@ -1,12 +1,13 @@
 /** Ranked locator list — the panel's primary screen. */
 import { grade } from '../../core/rank.js';
 import { KIND_RATIONALE } from '../../core/rules.js';
-import type { Candidate, FrameHop, Retarget } from '../../shared/types.js';
-import { pageExpression } from '../../shared/expression.js';
+import type { Candidate, FrameHop, Language, Retarget } from '../../shared/types.js';
+import { frameLocatorName, pageExpression } from '../../shared/expression.js';
 
 interface Props {
   candidates: Candidate[];
   frameChain: FrameHop[];
+  language: Language;
   frameChainWarning?: string;
   retarget?: Retarget;
   onCopy: (text: string) => void;
@@ -17,6 +18,7 @@ interface Props {
 export function Candidates({
   candidates,
   frameChain,
+  language,
   frameChainWarning,
   retarget,
   onCopy,
@@ -35,14 +37,14 @@ export function Candidates({
         {frameChain.length > 0 && (
           <p class="hint">
             Inside {frameChain.length} frame{frameChain.length > 1 ? 's' : ''} — the{' '}
-            <code>frameLocator()</code> prefix is included.
+            <code>{frameLocatorName(language)}()</code> prefix is included.
           </p>
         )}
         {frameChainWarning && <p class="warn">{frameChainWarning}</p>}
         {retarget && <p class="warn">{retarget.note}</p>}
 
         {candidates.map((candidate, index) => {
-          const expression = pageExpression(frameChain, candidate.locator);
+          const expression = pageExpression(frameChain, candidate.locators, language);
           const tier = grade(candidate.score);
 
           return (

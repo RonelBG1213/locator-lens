@@ -51,11 +51,12 @@ That claim is enforced by a test, not just asserted in a README — see
 | | |
 |---|---|
 | **Ranked candidates** | Every viable locator, scored 0–100, with each deduction named ("Uses a positional index", "Targets a machine-generated id") |
+| **Four client languages** | TypeScript, Python, Java and C#, switched from the header dropdown. Locators, the `frameLocator()` prefix, the page-object class and the editor's input syntax all follow it |
 | **Live selector editor** | Type or paste any locator — with or without `page.`, including `frameLocator()` chains — and see the match count, every match highlighted, and strict-mode violations flagged. Searches every frame |
 | **Element inspector** | Computed role, accessible name and description, attributes, state, DOM breadcrumb — so a ranking is explainable, not magic |
 | **CSS & XPath** | Reference forms for DevTools and non-Playwright tools, both absolute and anchored to a nearby named element |
 | **Screenshots** | Element or viewport, cropped from a real capture, with the picker's own overlay hidden. Copy to clipboard or download |
-| **Page object export** | Collect several picks, export a `*.page.ts` class following standard POM conventions |
+| **Page object export** | Collect several picks, export a page-object class in the selected language, following standard POM conventions |
 | **iframe support** | Picks inside frames come back with the full `frameLocator(...)` chain |
 | **Retarget warnings** | When Playwright deliberately points elsewhere (an `<option>` → its `<select>`), the panel says so instead of silently handing you a different element |
 
@@ -88,6 +89,9 @@ development path; the packaged build is what goes to the Chrome Web Store.
 4. Hover a candidate to highlight what it matches, on the page, in real time.
 5. Use **+ page object** to collect elements, then export the class.
 
+Writing tests in something other than TypeScript? Set the language dropdown in
+the header once — it is remembered — and everything the panel emits follows it.
+
 ## The panel, section by section
 
 ### Locators
@@ -114,6 +118,29 @@ The primary screen. One card per candidate, best first.
 Hovering a card highlights its matches on the page. Ordering is
 [uniqueness first](#uniqueness-is-structural-not-a-cost) — a plain CSS path that
 resolves to one element outranks a beautiful `getByRole` that resolves to six.
+The ordering is fixed across languages: switching the dropdown re-renders the
+same candidates in the same order, it does not re-rank them.
+
+#### Client language
+
+The header dropdown picks which Playwright client the panel writes for. The same
+button comes out as:
+
+| Language | |
+|---|---|
+| TypeScript | `page.getByRole('button', { name: 'Save' })` |
+| Python | `page.get_by_role("button", name="Save")` |
+| Java | `page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Save"))` |
+| C# | `Page.GetByRole(AriaRole.Button, new() { Name = "Save" })` |
+
+These are rendered by Playwright's own `asLocator`, the same function that gives
+`codegen --target python` its output — not by string-rewriting the JavaScript
+form. The setting is stored with your other settings and survives reopening the
+panel.
+
+All four renderings are produced at pick time, so switching the dropdown needs no
+round trip to the page and keeps working after the page has navigated away from
+the element you picked.
 
 ### Element & attributes
 
@@ -176,6 +203,11 @@ against the page as it currently is:
 | Chained / filtered | `getByRole('row', { name: 'Globex' }).getByRole('button')` |
 | Raw selector syntax | `internal:role=button[name="Save"i]` or `#save-btn` |
 
+Locator source is read in the language the dropdown names, so whatever the panel
+copied out can be pasted straight back in — `get_by_role("button", name="Save")`
+under Python, `Page.GetByRole(…)` under C#. Raw selector syntax has no language
+and parses under all four.
+
 Matches are highlighted on the page as you type (180 ms debounce), in every frame
 the expression reaches. **Clear** empties the box and unpaints every frame.
 
@@ -229,7 +261,7 @@ is a trade a locator picker should make.
 ### Page object
 
 Click **+ page object** on any candidate to collect it. Name the page, then copy
-or download a `*.page.ts` class:
+or download the class — in whichever language the header dropdown names.
 
 ```ts
 import type { Page } from '@playwright/test';
@@ -244,19 +276,48 @@ export class CheckoutPage {
 }
 ```
 
-Property names are derived from the accessible name in camelCase, suffixed by
-role (`save` → `saveButton`, but `Save Button` stays `saveButton` — no
-duplication), capped at four words, never a reserved word, never shadowing
-`page`, and de-duplicated with `2`, `3`, … Frame hops are folded into the
-property, so the class works from a plain `page`.
+```python
+from playwright.sync_api import Page
 
-The class name and filename are both derived from what you type:
-`Customer Details` → `CustomerDetailsPage` in `customer-details.page.ts`.
+
+class CheckoutPage:
+    def __init__(self, page: Page) -> None:
+        self.page = page
+        # textbox: Email
+        self.email_input = page.get_by_label("Email")
+        # button: Place order
+        self.place_order_button = page.get_by_role("button", name="Place order")
+```
+
+Java declares the fields and assigns them in the constructor (`page` is not in
+scope at field-initialiser time); C# uses expression-bodied `ILocator`
+properties over a `_page` field, as Playwright's own .NET samples do.
+
+Property names are derived from the accessible name, suffixed by role
+(`save` → `saveButton`, but `Save Button` stays `saveButton` — no duplication),
+capped at four words, and de-duplicated with `2`, `3`, … Casing follows the
+language: `saveButton` for TypeScript and Java, `save_button` for Python,
+`SaveButton` for C#. A name that collides with a reserved word or with the page
+field gets a `locator` suffix, in that same casing — Python's `class` becomes
+`class_locator`, not `classLocator`. Frame hops are folded into the property, so
+the class works from its own page field.
+
+Switching the language re-renders the class, the property names and the download
+filename together; you do not have to re-pick anything.
+
+The class name and filename are both derived from what you type —
+`Customer Details` → `CustomerDetailsPage` in `customer-details.page.ts`,
+`customer_details_page.py`, `CustomerDetailsPage.java` or
+`CustomerDetailsPage.cs`.
 
 **No assertions and no action methods are generated.** Those are written by hand
 once the shape of the flow is known; this generates the tedious half only.
 
 ### Settings
+
+**Client language** — the header dropdown, not this section, but it is stored
+here: `chrome.storage.sync`, alongside the test ID attribute, so it survives
+reopening the panel and follows your Chrome profile.
 
 **Test ID attribute** — must match `use.testIdAttribute` in your Playwright
 config, or `getByTestId()` suggestions will not match what your tests resolve.
@@ -392,7 +453,7 @@ in plain Node and is unit tested without a browser.
 |---|---|
 | `src/vendor/` | Generated, **committed on purpose** — builds without a `playwright-core` install, and engine changes show up in review |
 | `src/engine/` | Thin wrappers: bootstrap, generate, query, inspect. The only code that knows the engine exists |
-| `src/core/` | Pure logic: ranking, rules, raw and anchored selectors, crop geometry, locator-input parsing, POM codegen. Unit tested without a browser |
+| `src/core/` | Pure logic: ranking, rules, raw and anchored selectors, crop geometry, locator-input parsing, POM naming and the four page-object emitters. Unit tested without a browser |
 | `src/content/` | Picker state machine, overlay, frame chain, cross-frame evaluate and measure |
 | `src/sidepanel/` | Preact UI, the chrome.* bridge, and screenshot cropping |
 | `src/shared/` | Message and domain types, plus the expression renderer both sides use |
@@ -444,17 +505,18 @@ panel was the price.
 
 ```bash
 npm run typecheck
-npm run test:unit    # 73 tests — ranking, POM codegen, crop geometry, locator parsing
-npm run test:e2e     # 39 tests — round-trip, engine API, extension integration
+npm run test:unit    # 115 tests — ranking, POM codegen, crop geometry, locator parsing
+npm run test:e2e     # 48 tests — round-trip, engine API, extension integration
 npm test             # all of the above
 ```
 
 | Suite | Covers |
 |---|---|
 | `tests/unit/rank.spec.ts` | Scoring, tiering, tie-breaks |
-| `tests/unit/pom.spec.ts` | Property naming, de-duplication, class/file naming, output shape |
+| `tests/unit/pom.spec.ts` | Property naming and casing per language, de-duplication, class/file naming, and an inline snapshot of each of the four emitters |
+| `tests/unit/expression.spec.ts` | Root receiver, frame-hop spelling and chain assembly per language |
 | `tests/unit/crop.spec.ts` | Crop arithmetic — scale measurement, clamping, clipped detection |
-| `tests/unit/locatorInput.spec.ts` | `page.` stripping, frame splitting, parse failures |
+| `tests/unit/locatorInput.spec.ts` | `page.` stripping, frame splitting, parse failures, reading each language's source |
 | `tests/e2e/roundtrip.spec.ts` | The one the design rests on |
 | `tests/e2e/engine.spec.ts` | Fails loudly if a member of the injected script disappears |
 | `tests/e2e/extension.spec.ts` | The packaged extension, real service worker, real `chrome.*` messaging |
@@ -508,6 +570,11 @@ member of the injected script disappears or the two pins drift apart,
 `tests/unit/locatorInput.spec.ts` covers
 the selector-text half in plain Node, and the round-trip suite catches behavioural
 drift in either.
+
+The language dropdown rests on the engine keeping all four of its `asLocator`
+generators — `javascript`, `python`, `java`, `csharp`. A missing one would not
+throw, it would quietly render something unusable, so `engine.spec.ts` asserts
+the exact output of each and reads every one of them back through the parser.
 
 **Known layout change:** `playwright-core` ≤ 1.61 ships the bundle at
 `lib/generated/injectedScriptSource.js`; 1.62+ folds it into `lib/coreBundle.js`.

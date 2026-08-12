@@ -33,7 +33,16 @@ export const PANEL_CSS = `
     color: var(--fg); background: var(--panel);
     border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
   }
-  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  /* Sized to match the buttons it sits beside in the header. */
+  select {
+    font: inherit; color: var(--fg);
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 6px; cursor: pointer;
+  }
+  select:hover { border-color: var(--accent); }
+  input:focus-visible, button:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
 
   section { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
   section > h2 {

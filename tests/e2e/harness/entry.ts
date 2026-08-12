@@ -14,7 +14,7 @@ import { rank } from '../../../src/core/rank.js';
 import { toAxisSelectors } from '../../../src/core/axisSelectors.js';
 import { toCssPath, toXPath } from '../../../src/core/rawSelectors.js';
 import { pageExpression } from '../../../src/shared/expression.js';
-import type { Candidate, ElementInfo, Retarget } from '../../../src/shared/types.js';
+import type { Candidate, ElementInfo, Language, Retarget } from '../../../src/shared/types.js';
 
 /** Attribute the round-trip test uses to confirm identity. Applied after analysis. */
 const MARK = 'data-psp-roundtrip';
@@ -22,7 +22,7 @@ const MARK = 'data-psp-roundtrip';
 export interface Analysis {
   index: number;
   tagName: string;
-  /** Full `page.…` expression for the best candidate. */
+  /** Full `page.…` expression for the best candidate, in JavaScript. */
   expression: string;
   best: Candidate;
   candidates: Candidate[];
@@ -81,7 +81,7 @@ const api = {
     return {
       index,
       tagName: element.tagName.toLowerCase(),
-      expression: pageExpression([], best.locator),
+      expression: pageExpression([], best.locators, 'javascript'),
       best,
       candidates,
       info: inspect(element),
@@ -105,8 +105,8 @@ const api = {
    * fans out across frames. Cross-frame aggregation needs the real frame tree and
    * is covered by tests/e2e/extension.spec.ts instead.
    */
-  evaluate(input: string) {
-    const parsed = parseLocatorInput(input, testIdAttribute());
+  evaluate(input: string, language: Language = 'javascript') {
+    const parsed = parseLocatorInput(input, testIdAttribute(), language);
     if (!parsed.ok)
       return { selector: null, error: parsed.error, matchCount: null, previews: [], strictViolation: false, frameHops: 0 };
 

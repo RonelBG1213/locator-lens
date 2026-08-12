@@ -29,14 +29,15 @@ import {
 } from './bridge.js';
 import { crop, type Shot } from './capture.js';
 import { PANEL_CSS } from './styles.js';
-import { propertyName } from '../core/pom.js';
-import { pageExpression } from '../shared/expression.js';
-import { DEFAULT_SETTINGS } from '../shared/types.js';
+import { chainExpression } from '../shared/expression.js';
+import { DEFAULT_SETTINGS, LANGUAGES } from '../shared/types.js';
 import type { ContentToPanel } from '../shared/messages.js';
 import type {
   Candidate,
   CaptureTarget,
   EvaluationResult,
+  Language,
+  LocatorSources,
   PickResult,
   SessionEntry,
   Settings,
@@ -191,9 +192,18 @@ function App() {
     (candidate: Candidate) => {
       if (!pick) return;
       const entry: SessionEntry = {
-        name: propertyName({ accessibleName: pick.info.accessibleName, role: pick.info.role }),
-        // Frame hops belong on the property, so the page object works from `page`.
-        locator: pageExpression(pick.frameChain, candidate.locator).replace(/^page\./, ''),
+        // Named at render time: the convention depends on the language, and the
+        // language can change after the element has been collected.
+        name: '',
+        // Frame hops belong on the property, so the page object works from its
+        // own page field. Root-less, because that field is named differently in
+        // every language.
+        locators: Object.fromEntries(
+          LANGUAGES.map(({ id }) => [
+            id,
+            chainExpression(pick.frameChain, candidate.locators, id),
+          ]),
+        ) as LocatorSources,
         role: pick.info.role,
         accessibleName: pick.info.accessibleName,
       };
@@ -277,6 +287,23 @@ function App() {
       <header>
         <h1>Locator Lens</h1>
         {toast && <span class="badge plain">{toast}</span>}
+        <select
+          aria-label="Client language"
+          title="Which Playwright client language to render locators in"
+          value={settings.language}
+          onChange={(event) =>
+            void updateSettings({
+              ...settings,
+              language: (event.target as HTMLSelectElement).value as Language,
+            })
+          }
+        >
+          {LANGUAGES.map(({ id, label }) => (
+            <option key={id} value={id}>
+              {label}
+            </option>
+          ))}
+        </select>
         <button
           class="primary"
           aria-pressed={picking}
@@ -310,6 +337,7 @@ function App() {
             <Candidates
               candidates={pick.candidates}
               frameChain={pick.frameChain}
+              language={settings.language}
               frameChainWarning={pick.frameChainWarning}
               retarget={pick.retarget}
               onCopy={copy}
@@ -324,6 +352,7 @@ function App() {
           <SelectorEditor
             value={selector}
             result={evaluation}
+            language={settings.language}
             onChange={setSelector}
             onUse={setSelector}
           />
@@ -347,6 +376,7 @@ function App() {
         <PomExport
           pageName={pageName}
           entries={session}
+          language={settings.language}
           onPageNameChange={setPageName}
           onRemove={(index) => setSession((c) => c.filter((_, i) => i !== index))}
           onClear={() => setSession([])}
@@ -388,6 +418,7 @@ function App() {
               value={settings.testIdAttributeName}
               onChange={(event) =>
                 void updateSettings({
+                  ...settings,
                   testIdAttributeName:
                     (event.target as HTMLInputElement).value.trim() ||
                     DEFAULT_SETTINGS.testIdAttributeName,

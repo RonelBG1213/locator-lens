@@ -10,16 +10,27 @@
  */
 import { useRef } from 'preact/hooks';
 
-import type { EvaluationResult, FrameEvaluation } from '../../shared/types.js';
+import { rootName } from '../../shared/expression.js';
+import { languageLabel } from '../../shared/types.js';
+import type { EvaluationResult, FrameEvaluation, Language } from '../../shared/types.js';
 
 interface Props {
   value: string;
   result: EvaluationResult | null;
+  language: Language;
   onChange: (value: string) => void;
   onUse: (expression: string) => void;
 }
 
-export function SelectorEditor({ value, result, onChange, onUse }: Props) {
+/** What the box parses, spelled the way the selected language spells it. */
+const EXAMPLE: Record<Language, string> = {
+  javascript: "getByRole('button', { name: 'Save' })",
+  python: 'get_by_role("button", name="Save")',
+  java: 'getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Save"))',
+  csharp: 'GetByRole(AriaRole.Button, new() { Name = "Save" })',
+};
+
+export function SelectorEditor({ value, result, language, onChange, onUse }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Emptying the box is the reset signal the panel already listens for: it drops
@@ -39,7 +50,7 @@ export function SelectorEditor({ value, result, onChange, onUse }: Props) {
             class="grow"
             type="text"
             spellcheck={false}
-            placeholder="getByRole('button', { name: 'Save' })"
+            placeholder={EXAMPLE[language]}
             value={value}
             onInput={(event) => onChange((event.target as HTMLInputElement).value)}
           />
@@ -51,7 +62,12 @@ export function SelectorEditor({ value, result, onChange, onUse }: Props) {
             Clear
           </button>
         </div>
-        <Status result={result} hasInput={value.trim().length > 0} onUse={onUse} />
+        <Status
+          result={result}
+          hasInput={value.trim().length > 0}
+          language={language}
+          onUse={onUse}
+        />
       </div>
     </section>
   );
@@ -60,18 +76,20 @@ export function SelectorEditor({ value, result, onChange, onUse }: Props) {
 function Status({
   result,
   hasInput,
+  language,
   onUse,
 }: {
   result: EvaluationResult | null;
   hasInput: boolean;
+  language: Language;
   onUse: (expression: string) => void;
 }) {
   if (!hasInput)
     return (
       <p class="hint">
-        Matches are highlighted on the page as you type — in iframes too. Locator source
-        (<code>getByRole(…)</code>, with or without <code>page.</code>) and raw selector syntax both
-        work.
+        Matches are highlighted on the page as you type — in iframes too. Locator source is read as{' '}
+        {languageLabel(language)} (with or without <code>{rootName(language)}.</code>); raw selector
+        syntax works whatever the language.
       </p>
     );
 
@@ -98,6 +116,7 @@ function Status({
               key={index}
               frame={frame}
               selector={result.selector ?? ''}
+              language={language}
               onUse={onUse}
             />
           ))}
@@ -139,14 +158,18 @@ function TargetLine({
 function OtherFrame({
   frame,
   selector,
+  language,
   onUse,
 }: {
   frame: FrameEvaluation;
   selector: string;
+  language: Language;
   onUse: (expression: string) => void;
 }) {
-  const prefix = frame.frameChain.map((hop) => hop.locator).join('.');
-  const expression = `page.${prefix}${prefix ? '.' : ''}${selector}`;
+  const prefix = frame.frameChain.map((hop) => hop.locators[language]).join('.');
+  // `selector` is raw Playwright selector syntax, which parses under any language,
+  // so only the prefix needs to be spelled the selected language's way.
+  const expression = `${rootName(language)}.${prefix}${prefix ? '.' : ''}${selector}`;
 
   return (
     <div class="row">

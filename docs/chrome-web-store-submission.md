@@ -34,63 +34,88 @@ Locator Lens
 Click any element to get a ranked, verified locator for your Playwright tests. Unofficial; not affiliated with Microsoft.
 ```
 
+The summary was **not** what the reviewer flagged; leave it unless you want the
+"no install" hook up front, in which case this is the swap (124 chars), and the
+trademark disclaimer stays in the detailed description either way:
+
+```
+Click any element to get a ranked, verified Playwright locator — no Playwright install needed. Unofficial, not by Microsoft.
+```
+
 **Category:** Developer Tools
 **Language:** English (United States)
 
 **Detailed description**
 
+> Rewritten 2026-08-09 after a review comment: *"Focus on explaining what the
+> item does and why users should install it."* The previous version spent its
+> back half on permissions, privacy and licence boilerplate — none of which
+> answers "what does it do". Those belong in the permission-justification fields
+> (§4) and the package's own `THIRD_PARTY_NOTICES.txt`, not here. Keep the
+> functional content first and dominant; if this needs editing, add capability,
+> do not re-add policy text.
+
 ```
 Locator Lens turns "click an element" into a Playwright locator you can paste
-straight into a test — scored, explained, and verified against the page before
-you copy it.
+straight into a test.
 
-WHY IT IS DIFFERENT
+Open the page you want to test, click the toolbar icon, then click the element
+you care about. A side panel lists every locator that would find it, best first,
+each with a score out of 100, a live count of how many elements it actually
+matches right now, and a plain-English reason for every point it lost — "uses a
+positional index", "targets a machine-generated id".
 
-Most selector pickers hand-roll their own matching, so the locator they show is a
-guess at what Playwright would do. Locator Lens bundles Playwright's own injected
-selector engine — the same code that powers `npx playwright codegen` and the
-Inspector. The suggestion is literally what codegen would emit, and match counts
-come from Playwright's real resolver, including strict mode and shadow-DOM
-piercing. "1 match" in the panel means 1 match in the test.
+YOU DO NOT NEED PLAYWRIGHT INSTALLED
 
-WHAT YOU GET
+Getting a locator this way normally means a Node project, an installed Playwright
+package, and a codegen session driving a second browser window. Locator Lens does
+it in the browser you already have open, on the page you are already logged into.
+There is nothing to install but the extension: no local server, no command line,
+no debugger connection. That makes it useful before the test project exists, on a
+machine you cannot install tooling on, or on a staging site behind a login you
+would rather not automate twice just to look at a button.
 
-• Ranked candidates — every viable locator scored 0-100, with each deduction
-  named ("Uses a positional index", "Targets a machine-generated id")
-• Live selector editor — paste any locator, with or without the page. prefix,
-  including frameLocator() chains, and see the match count and every match
-  highlighted on the page as you type
-• Element inspector — computed role, accessible name, attributes, state and a
-  DOM breadcrumb, so a ranking is explainable rather than magic
-• CSS and XPath reference forms, both absolute and anchored to a nearby named
-  element, for DevTools and non-Playwright tools
-• Element and viewport screenshots, cropped from a real capture
-• Page object export — collect several picks and export a *.page.ts class
-• iframe support — picks inside frames come back with the full frameLocator()
-  chain already applied
+THE LOCATORS ARE THE REAL ONES
 
-PRIVACY
+Most selector pickers write their own matching logic, so what they show you is an
+educated guess at what Playwright would do. Locator Lens bundles Playwright's own
+selector engine — the same code behind codegen and the Inspector — so a
+suggestion is what codegen would have written, and the match count comes from the
+real resolver, strict mode and shadow DOM included. If the panel says one match,
+your test gets one match.
 
-Nothing leaves your machine. The extension makes no network requests: no
-analytics, no telemetry, no accounts, no servers. The only thing it stores is
-your own test-id attribute setting.
+WHAT ELSE IS IN THE PANEL
 
-PERMISSIONS
+• Try a selector — paste a locator you already have and watch it highlight
+  everything it hits, live, as you type. This is how you find out why a failing
+  test cannot see its button.
+• Element details — computed role, accessible name, attributes, state and a DOM
+  breadcrumb, so you can see why a locator ranked where it did instead of taking
+  the score on faith.
+• CSS and XPath — reference forms for DevTools and for tools that are not
+  Playwright.
+• Screenshots — the picked element or the whole viewport, copied or downloaded.
+• Page object export — pick several elements and export them as a ready-made
+  page object class.
+• Four languages — TypeScript, Python, Java and C#. One dropdown switches every
+  locator, page object and filename the panel produces, rendered by Playwright's
+  own code generator rather than by rewriting the JavaScript form.
+• Frames — a pick inside an iframe comes back with the frameLocator() chain
+  already applied.
 
-It ships with activeTab only, so there is no "read your data on all websites"
-warning at install. Chrome grants access when you click the toolbar icon and
-revokes it when the page navigates to a different origin. If you are working
-through a flow that crosses origins, an optional "Stay connected" button in the
-panel requests all-sites access for the session — entirely opt-in, and revocable
-from the same button.
+WHO IT IS FOR
+
+QA engineers and developers writing or repairing Playwright tests, and anyone
+checking a page for testability before any tests exist.
+
+Nothing you pick leaves your machine: no network requests, no analytics, no
+accounts. The extension can read a page only after you click its icon.
 
 Requires Chrome 114 or later.
-
-Source: https://github.com/RonelBG1213/locator-lens
+Source code: https://github.com/RonelBG1213/locator-lens
 
 Unofficial. Not affiliated with, endorsed by, or sponsored by Microsoft or the
-Playwright project. Bundles playwright-core, licensed under Apache-2.0; the full
-notice ships inside the extension as THIRD_PARTY_NOTICES.txt.
+Playwright project.
 ```
 
 ---

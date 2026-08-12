@@ -6,22 +6,30 @@
  */
 import { engine, testIdAttribute } from './bootstrap.js';
 import { countMatches, queryAll } from './query.js';
-import type { LocatorKind, Retarget } from '../shared/types.js';
+import { LANGUAGES, type LocatorKind, type LocatorSources, type Retarget } from '../shared/types.js';
 
 /** A candidate before core/rank.ts scores it. */
 export interface RawCandidate {
   selector: string;
-  locator: string;
+  locators: LocatorSources;
   kind: LocatorKind;
   matchCount: number;
   isCodegenDefault: boolean;
+}
+
+export interface GenerateOptions {
+  /**
+   * True when this frame is not the top one, so the expression will hang off a
+   * frameLocator() rather than off `page`. Only Java's output differs.
+   */
+  insideFrame?: boolean;
 }
 
 /**
  * All viable selectors for `element`, best-effort deduplicated, each with its
  * match count. The selector Playwright's codegen would emit is flagged.
  */
-export function candidatesFor(element: Element): RawCandidate[] {
+export function candidatesFor(element: Element, options: GenerateOptions = {}): RawCandidate[] {
   const injected = engine();
   const testIdAttributeName = testIdAttribute();
 
@@ -32,16 +40,26 @@ export function candidatesFor(element: Element): RawCandidate[] {
 
   return ordered.map((selector) => ({
     selector,
-    locator: toLocator(selector),
+    locators: toLocators(selector, options),
     kind: kindOf(selector),
     matchCount: countMatches(selector) ?? 0,
     isCodegenDefault: selector === generated.selector,
   }));
 }
 
-/** Render a Playwright-internal selector as JavaScript locator source. */
-export function toLocator(selector: string): string {
-  return engine().utils.asLocator('javascript', selector);
+/**
+ * Render a Playwright-internal selector as locator source in every language.
+ *
+ * All four are produced here because the panel has no engine to produce them
+ * later — see LocatorSources.
+ */
+export function toLocators(selector: string, options: GenerateOptions = {}): LocatorSources {
+  const { utils } = engine();
+  const insideFrame = options.insideFrame === true;
+
+  return Object.fromEntries(
+    LANGUAGES.map(({ id }) => [id, utils.asLocator(id, selector, insideFrame)]),
+  ) as LocatorSources;
 }
 
 /**
