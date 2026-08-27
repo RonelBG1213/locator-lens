@@ -4,7 +4,7 @@
  * Role and accessible name matter most: they are the inputs getByRole depends on,
  * so seeing them explains a suggestion better than any score does.
  */
-import type { ElementInfo, RawSelectors } from '../../shared/types.js';
+import type { ElementInfo, RawSelectors, ShadowContext } from '../../shared/types.js';
 
 interface Props {
   info: ElementInfo;
@@ -37,6 +37,13 @@ export function Inspector({ info, raw, onCopy }: Props) {
 
             <dt>State</dt>
             <dd>{describeState(info)}</dd>
+
+            {(info.shadow.depth > 0 || info.shadow.isHost) && (
+              <>
+                <dt>Shadow</dt>
+                <dd>{describeShadow(info.shadow)}</dd>
+              </>
+            )}
 
             {info.text && (
               <>
@@ -80,6 +87,15 @@ export function Inspector({ info, raw, onCopy }: Props) {
             Reference only — for DevTools or non-Playwright tools. Prefer the ranked locators above.
           </p>
 
+          {info.shadow.depth > 0 && (
+            <p class="warn">
+              Inside a shadow root. These forms are plain document queries and cannot cross the
+              boundary, so they will not resolve from the page root — reach the host first, then
+              query its <code>shadowRoot</code>. The ranked locators above are unaffected:
+              Playwright pierces open shadow roots.
+            </p>
+          )}
+
           {raw.anchor && (
             <>
               <p class="hint">Anchored on {raw.anchor}</p>
@@ -104,6 +120,15 @@ function SelectorRow({ value, onCopy }: { value: string; onCopy: (text: string) 
       <button class="link" onClick={() => onCopy(value)}>copy</button>
     </div>
   );
+}
+
+/** `inside my-combo#country` / `hosts an open shadow root`. */
+function describeShadow(shadow: ShadowContext): string {
+  const parts: string[] = [];
+  if (shadow.depth > 0) parts.push(`inside ${shadow.hosts.join(' › ')}`);
+  if (shadow.closed) parts.push('closed root');
+  if (shadow.isHost) parts.push('hosts an open shadow root');
+  return parts.join(', ');
 }
 
 function describeState(info: ElementInfo): string {

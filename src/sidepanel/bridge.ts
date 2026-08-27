@@ -90,11 +90,7 @@ export async function captureVisibleTab(tabId: number): Promise<string | null> {
   }
 }
 
-/** Offer generated source as a download without needing the downloads permission. */
-export function downloadText(fileName: string, text: string): void {
-  download(fileName, new Blob([text], { type: 'text/plain' }));
-}
-
+/** Offer a file as a download without needing the downloads permission. */
 export function downloadBlob(fileName: string, blob: Blob): void {
   download(fileName, blob);
 }

@@ -1,7 +1,7 @@
 /** Ranked locator list — the panel's primary screen. */
 import { grade } from '../../core/rank.js';
 import { KIND_RATIONALE } from '../../core/rules.js';
-import type { Candidate, FrameHop, Retarget } from '../../shared/types.js';
+import type { Candidate, FrameHop, Retarget, ShadowContext } from '../../shared/types.js';
 import { pageExpression } from '../../shared/expression.js';
 
 interface Props {
@@ -9,9 +9,9 @@ interface Props {
   frameChain: FrameHop[];
   frameChainWarning?: string;
   retarget?: Retarget;
+  shadow: ShadowContext;
   onCopy: (text: string) => void;
   onHighlight: (selector: string | null) => void;
-  onAddToSession: (candidate: Candidate) => void;
 }
 
 export function Candidates({
@@ -19,9 +19,9 @@ export function Candidates({
   frameChain,
   frameChainWarning,
   retarget,
+  shadow,
   onCopy,
   onHighlight,
-  onAddToSession,
 }: Props) {
   if (candidates.length === 0) return null;
 
@@ -40,6 +40,19 @@ export function Candidates({
         )}
         {frameChainWarning && <p class="warn">{frameChainWarning}</p>}
         {retarget && <p class="warn">{retarget.note}</p>}
+
+        {shadow.depth > 0 && !shadow.closed && (
+          <p class="hint">
+            Inside {shadow.hosts.join(' › ')} — Playwright pierces open shadow roots, so these
+            locators need no special handling.
+          </p>
+        )}
+        {shadow.closed && (
+          <p class="warn">
+            Inside a closed shadow root. Playwright cannot pierce one, so these locators will not
+            resolve in a test — the component has to expose the element itself.
+          </p>
+        )}
 
         {candidates.map((candidate, index) => {
           const expression = pageExpression(frameChain, candidate.locator);
@@ -80,9 +93,6 @@ export function Candidates({
                 <span class="grow" />
                 <button class="link" onClick={() => onCopy(expression)}>
                   copy
-                </button>
-                <button class="link" onClick={() => onAddToSession(candidate)}>
-                  + page object
                 </button>
               </div>
 

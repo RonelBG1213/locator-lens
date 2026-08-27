@@ -75,6 +75,21 @@
     <section id="shadow-section">
       <h2>Shadow DOM</h2>
       <div id="shadow-host"></div>
+      <!-- A closed root: nothing inside is reachable, by us or by Playwright. The
+           picker must report the host and say why, rather than pretending. -->
+      <div id="closed-shadow-host"></div>
+    </section>
+
+    <!-- A popup list of values that dismisses itself the three ways real ones do:
+         on focusout, on an outside pointerdown, and on Escape. content/freeze.ts
+         exists to block exactly these. -->
+    <section id="lov-section">
+      <h2>Popup LOV</h2>
+      <button id="lov-open" aria-haspopup="listbox">Choose a country</button>
+      <div id="lov-pane" role="listbox" aria-label="Country list" hidden>
+        <button role="option" id="lov-austria">Austria</button>
+        <button role="option" id="lov-bulgaria">Bulgaria</button>
+      </div>
     </section>
 
     <section id="frame-section">
@@ -126,6 +141,34 @@
       root.innerHTML =
         '<button id="shadow-btn">Inside shadow root</button>' +
         '<label for="sh">Shadow field</label><input id="sh">';
+
+      document
+        .getElementById('closed-shadow-host')
+        .attachShadow({ mode: 'closed' })
+        .append(Object.assign(document.createElement('button'), { textContent: 'Sealed away' }));
+
+      // The pane closes on focusout, on an outside pointerdown, and on Escape —
+      // all on `document`, which is where dropdown libraries put them.
+      const pane = document.getElementById('lov-pane');
+      const opener = document.getElementById('lov-open');
+      const close = () => { pane.hidden = true; };
+
+      opener.addEventListener('click', () => {
+        pane.hidden = false;
+        pane.querySelector('button').focus();
+      });
+      // Only when focus actually leaves the pane — a real LOV has to survive its
+      // own internal focus moves, and so must this one.
+      document.addEventListener('focusout', (event) => {
+        const next = event.relatedTarget;
+        if (!pane.hidden && !pane.contains(next) && next !== opener) close();
+      });
+      document.addEventListener('pointerdown', (event) => {
+        if (!pane.hidden && !pane.contains(event.target) && event.target !== opener) close();
+      });
+      document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') close();
+      });
     </script>
   </body>
 </html>

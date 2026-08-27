@@ -5,6 +5,7 @@ scratch/
 test-results/
 playwright-report/
 tests/e2e/harness/bundle.js
+.claude/
 
 # NOT ignored: src/vendor/injectedScript.generated.js
 # It is committed on purpose so the extension builds without a playwright-core

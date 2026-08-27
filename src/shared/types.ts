@@ -46,6 +46,24 @@ export interface Candidate {
   isCodegenDefault: boolean;
 }
 
+/**
+ * Where the element sits relative to shadow boundaries. All-zero for the common
+ * case of an element in the document proper. Computed in core/shadow.ts.
+ */
+export interface ShadowContext {
+  /** How many shadow roots stand between the document and the element. */
+  depth: number;
+  /** The hosts crossed, outermost first, e.g. ['my-app', 'my-combo#country']. */
+  hosts: string[];
+  /**
+   * A closed root was crossed. Playwright cannot pierce one either, so the
+   * ranked locators will not resolve — worth saying out loud.
+   */
+  closed: boolean;
+  /** The element itself hosts an open shadow root. */
+  isHost: boolean;
+}
+
 /** Everything the Inspector pane shows about the picked element. */
 export interface ElementInfo {
   tagName: string;
@@ -58,8 +76,13 @@ export interface ElementInfo {
   enabled: boolean;
   editable: boolean;
   checked: boolean | 'mixed' | null;
-  /** Outermost-first breadcrumb of ancestors, e.g. ['body', 'form#login', 'div.row']. */
+  /**
+   * Outermost-first breadcrumb of ancestors, e.g. ['body', 'form#login', 'div.row'].
+   * Crosses shadow boundaries, marking each one with `#shadow-root`.
+   */
   ancestry: string[];
+  /** Shadow boundaries between the document and this element. */
+  shadow: ShadowContext;
   /** Frame-local, and only true at pick time — screenshots re-measure, see CaptureGeometry. */
   boundingBox: Rect | null;
 }
@@ -196,15 +219,6 @@ export interface CaptureGeometry {
 export type CaptureStart =
   | { ok: true; geometry: CaptureGeometry }
   | { ok: false; error: string };
-
-/** One element captured into the multi-pick session, for POM export. */
-export interface SessionEntry {
-  /** camelCase property name, unique within the session. */
-  name: string;
-  locator: string;
-  role: string | null;
-  accessibleName: string;
-}
 
 export interface Settings {
   /** Feeds Playwright's engine; must match `use.testIdAttribute` in your config. */

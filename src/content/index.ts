@@ -16,6 +16,7 @@ import { inspect } from '../engine/inspect.js';
 import { evaluateLocal } from '../engine/query.js';
 import { parseLocatorInput } from '../core/locatorInput.js';
 import { COLLECTION_BUDGET_MS, collectFromChild, runEvaluation } from './evaluate.js';
+import { initFreeze, isFrozen, keepAlive, setFrozen as setFreezeShield } from './freeze.js';
 import {
   afterPaint,
   handleMeasureRequest,
@@ -52,6 +53,21 @@ function start(): void {
   let mode: 'idle' | 'pick' = 'idle';
   let hovered: Element | null = null;
 
+  initFreeze({
+    isPicking: () => mode === 'pick',
+    // Escape never reaches the page while frozen, so it means one of ours: back
+    // out of the pick if there is one, otherwise release the freeze.
+    onEscape: () => {
+      if (mode === 'pick') {
+        setMode('idle');
+        if (isTopFrame()) notifyPanel({ type: 'PSP_MODE_CHANGED', mode: 'idle' });
+      } else {
+        setFrozen(false);
+      }
+    },
+    onExpire: () => void setFrozen(false),
+  });
+
   // ---------------------------------------------------------------- pick mode
 
   function setMode(next: 'idle' | 'pick', propagate = true): void {
@@ -59,6 +75,7 @@ function start(): void {
     mode = next;
     hovered = null;
     overlay.clear();
+    keepAlive();
 
     if (next === 'pick') {
       // Starting a new pick invalidates the old one. setMode runs in every frame,
@@ -80,9 +97,39 @@ function start(): void {
     if (propagate) broadcastDown({ __psp: true, type: 'PSP_FRAME_SET_MODE', mode: next });
   }
 
+  // --------------------------------------------------------------- freeze mode
+
+  /** Apply locally and relay down the tree, the same path pick mode takes. */
+  function setFrozen(next: boolean, propagate = true): boolean {
+    applyFrozen(next);
+    if (propagate) broadcastDown({ __psp: true, type: 'PSP_FRAME_SET_FROZEN', frozen: next });
+    return next;
+  }
+
+  /** Local effects: the event shield, the standing badge, and telling the panel. */
+  function applyFrozen(next: boolean): void {
+    setFreezeShield(next);
+    overlay.showBanner(next ? 'Locator Lens — frozen (Esc to release)' : null);
+    if (isTopFrame()) notifyPanel({ type: 'PSP_FROZEN_CHANGED', frozen: next });
+  }
+
+  /**
+   * The element the user is actually pointing at.
+   *
+   * `event.target` is retargeted to the shadow host for anything inside a shadow
+   * tree, so a document-level listener sees the web component rather than the
+   * button in it. The composed path starts at the real node. It stops at a closed
+   * root, which is the correct answer there — nothing inside one can be located.
+   */
+  function eventTarget(event: Event): Element | null {
+    const first = event.composedPath()[0];
+    if (first instanceof Element) return first;
+    return event.target instanceof Element ? event.target : null;
+  }
+
   function onMouseMove(event: MouseEvent): void {
-    const element = event.target;
-    if (!(element instanceof Element) || element === hovered) return;
+    const element = eventTarget(event);
+    if (!element || element === hovered) return;
     hovered = element;
 
     const info = inspect(element);
@@ -97,15 +144,17 @@ function start(): void {
    * picking a submit button would navigate away from the thing being inspected.
    */
   function onClick(event: MouseEvent): void {
-    if (!(event.target instanceof Element)) return;
+    const element = eventTarget(event);
+    if (!element) return;
     event.preventDefault();
     event.stopPropagation();
     event.stopImmediatePropagation();
 
+    keepAlive();
     // Hold the element itself, not its rect: a screenshot re-measures later, by
     // which time the page may well have moved underneath it.
-    setPickedElement(event.target);
-    report(buildResult(event.target));
+    setPickedElement(element);
+    report(buildResult(element));
     setMode('idle');
   }
 
@@ -309,6 +358,10 @@ function start(): void {
         setMode(message.mode);
         return;
 
+      case 'PSP_FRAME_SET_FROZEN':
+        setFrozen(message.frozen);
+        return;
+
       case 'PSP_FRAME_CLEAR_HIGHLIGHT':
         overlay.clear();
         broadcastDown(message);
@@ -363,12 +416,20 @@ function start(): void {
   chrome.runtime.onMessage.addListener((message: PanelToContent, _sender, sendResponse) => {
     switch (message.type) {
       case 'PSP_PING':
-        sendResponse({ ok: true, url: location.href });
+        sendResponse({ ok: true, url: location.href, frozen: isFrozen() });
         return false;
 
       case 'PSP_SET_MODE':
         setMode(message.mode);
         sendResponse({ ok: true });
+        return false;
+
+      case 'PSP_SET_FROZEN':
+        sendResponse({ ok: true, frozen: setFrozen(message.frozen) });
+        return false;
+
+      case 'PSP_TOGGLE_FROZEN':
+        sendResponse({ ok: true, frozen: setFrozen(!isFrozen()) });
         return false;
 
       case 'PSP_SETTINGS':

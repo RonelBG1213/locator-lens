@@ -7,11 +7,16 @@
  * chrome://extensions to pick changes up.
  */
 import * as esbuild from 'esbuild';
-import { rmSync, mkdirSync, writeFileSync, copyFileSync, existsSync } from 'node:fs';
+import { rmSync, mkdirSync, writeFileSync, copyFileSync, existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+
+// One version, in package.json. The manifest used to carry its own copy, which
+// is exactly the kind of thing that ships to the store off by a patch — and the
+// panel now displays it, so a drift would be visible to users.
+const { version } = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 const outdir = resolve(root, 'dist');
 const watch = process.argv.includes('--watch');
 
@@ -33,7 +38,7 @@ mkdirSync(outdir, { recursive: true });
 const manifest = {
   manifest_version: 3,
   name: 'Locator Lens',
-  version: '0.1.0',
+  version,
   // "Playwright" stays out of the name and appears only descriptively here: it is
   // what the tool works with, not who made it. The disclaimer is deliberate — the
   // extension bundles playwright-core, so the affiliation question is a fair one
@@ -59,6 +64,12 @@ const manifest = {
     'toggle-pick': {
       suggested_key: { default: 'Alt+Shift+P' },
       description: 'Toggle element pick mode',
+    },
+    // A keyboard path is the point, not a convenience: clicking the panel's own
+    // toggle blurs the page, which is what closes the pane being frozen.
+    'toggle-freeze': {
+      suggested_key: { default: 'Alt+Shift+F' },
+      description: 'Freeze the page so dropdowns and popup LOVs stay open',
     },
   },
 };

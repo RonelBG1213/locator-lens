@@ -25,6 +25,8 @@ const panel = resolve(root, 'dist/sidepanel.html');
 
 if (!existsSync(panel)) throw new Error('Missing dist/sidepanel.html. Run `npm run build` first.');
 
+const { version: VERSION } = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
+
 mkdirSync(outdir, { recursive: true });
 
 // Sampled from assets/icons/icon-master.png so the tiles and the icon read as
@@ -178,6 +180,9 @@ const DEMO_PICK = {
     editable: false,
     checked: null,
     ancestry: ['body', 'main', 'form.checkout', 'div.actions'],
+    // An ordinary element in the document proper — no shadow boundaries to warn
+    // about. The field is required; the panel reads it on every pick.
+    shadow: { depth: 0, hosts: [], closed: false, isHost: false },
     boundingBox: { x: 412, y: 596, width: 96, height: 36 },
   },
   raw: {
@@ -254,7 +259,7 @@ const assets = [
  * src/sidepanel/), stubbed to the "nothing picked yet" answers — which is the
  * state a new user opens the panel in anyway.
  */
-const CHROME_STUB = () => {
+const CHROME_STUB = (version) => {
   const evt = () => ({ addListener: () => {}, removeListener: () => {} });
   const tab = { id: 1, url: 'https://example.com/checkout', title: 'Checkout' };
 
@@ -267,6 +272,9 @@ const CHROME_STUB = () => {
   globalThis.chrome = {
     runtime: {
       id: 'store-asset-render',
+      // The panel prints this in the corner; the stub has to answer or the badge
+      // is missing from every listing screenshot.
+      getManifest: () => ({ version }),
       onMessage: {
         addListener: (l) => listeners.push(l),
         removeListener: (l) => listeners.splice(listeners.indexOf(l), 1),
@@ -292,7 +300,7 @@ const CHROME_STUB = () => {
 
 const browser = await chromium.launch();
 const context = await browser.newContext({ deviceScaleFactor: 1 });
-await context.addInitScript(CHROME_STUB);
+await context.addInitScript(CHROME_STUB, VERSION);
 const page = await context.newPage();
 
 // Staged inside dist/ rather than passed to setContent: an about:blank page may
@@ -310,7 +318,7 @@ for (const { file, w, h, html, pick, scroll } of assets) {
     await panelFrame.evaluate((result) => globalThis.__deliver({ type: 'PSP_PICKED', result }), DEMO_PICK);
     await panelFrame.getByText('getByRole').first().waitFor();
     // Headings, matched exactly: name matching is substring-and-case-insensitive
-    // by default, so "Element" otherwise also hits "Page object  0 elements".
+    // by default, so a short heading name would also hit any longer one containing it.
     // scrollIntoView, not scrollIntoViewIfNeeded: a heading peeking in at the
     // bottom edge counts as "needed = no", which silently leaves the shot
     // identical to the previous one.

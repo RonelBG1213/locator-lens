@@ -21,10 +21,24 @@ chrome.action.onClicked.addListener(async (tab) => {
   await opening;
 });
 
+/**
+ * Both shortcuts exist so the page never has to lose focus. That matters most for
+ * freeze: reaching for the panel's own toggle blurs the page, which is the very
+ * event freeze is there to defend a popup list against.
+ */
 chrome.commands.onCommand.addListener(async (command, tab) => {
-  if (command !== 'toggle-pick' || tab?.id === undefined) return;
+  if (tab?.id === undefined) return;
+
+  const message =
+    command === 'toggle-pick'
+      ? { type: 'PSP_SET_MODE', mode: 'pick' }
+      : command === 'toggle-freeze'
+        ? { type: 'PSP_TOGGLE_FROZEN' }
+        : null;
+  if (!message) return;
+
   await inject(tab.id);
-  await chrome.tabs.sendMessage(tab.id, { type: 'PSP_SET_MODE', mode: 'pick' }).catch(() => {});
+  await chrome.tabs.sendMessage(tab.id, message, { frameId: 0 }).catch(() => {});
 });
 
 /**

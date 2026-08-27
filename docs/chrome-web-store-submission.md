@@ -65,7 +65,10 @@ WHAT YOU GET
 • CSS and XPath reference forms, both absolute and anchored to a nearby named
   element, for DevTools and non-Playwright tools
 • Element and viewport screenshots, cropped from a real capture
-• Page object export — collect several picks and export a *.page.ts class
+• Freeze (Alt+Shift+F) — holds dropdowns, autocompletes and popup lists of values
+  open so the elements inside them can be picked instead of vanishing
+• Shadow DOM support — picks the real element inside open shadow roots and says
+  which selector forms survive the boundary
 • iframe support — picks inside frames come back with the full frameLocator()
   chain already applied
 
@@ -105,9 +108,14 @@ When the user clicks the toolbar icon, a side panel opens and the user picks an
 element on the page. The extension reads that element's role, accessible name,
 attributes and position in the DOM and shows ranked Playwright locator
 expressions the user can copy into a test. Every feature in the extension — the
-ranked locator list, the element inspector, the live match-count editor, the
-element screenshot, and the page-object export — is a different view of that
-same picked element and exists only to serve that one purpose.
+ranked locator list, the element inspector, the live match-count editor and the
+element screenshot — is a different view of that same picked element and exists
+only to serve that one purpose. Freeze, the one feature that acts on the page
+rather than describing it, exists for the same reason: a dropdown that closes
+when the user looks away cannot be picked, so freeze suspends the page's own
+dismissal handling until the user turns it off. It is off by default, requires an
+explicit toggle or keyboard shortcut, shows a badge on the page for as long as it
+lasts, and releases itself after five idle minutes or on navigation.
 ```
 
 ---
@@ -137,21 +145,25 @@ picked element. The extension requests no host permissions at install time.
 chrome.scripting.executeScript injects the extension's own bundled content
 script (content.js) into the active tab, in all frames, after the user clicks
 the toolbar icon or presses the shortcut. That content script draws the hover
-highlight, captures the element the user clicks, and computes the locator. It
-is injected on demand rather than declared as a static content script so the
-extension runs on no page until the user asks it to. Only files packaged inside
-the extension are injected.
+highlight, captures the element the user clicks, and computes the locator. When
+the user explicitly enables "Freeze", it also suppresses the page's own dismissal
+events (focusout, blur, Escape and, while picking, mousedown) so a dropdown stays
+open long enough to be picked; that is off by default, badged on the page while
+active, and released on Escape, on navigation, or after five idle minutes. The
+script is injected on demand rather than declared as a static content script so
+the extension runs on no page until the user asks it to. Only files packaged
+inside the extension are injected.
 ```
 
 **sidePanel**
 
 ```
 The extension's entire user interface is a side panel: the ranked locator list,
-element details, live selector editor, screenshot and page-object export. A
-side panel is required rather than a popup because a popup closes the moment
-the user clicks into the page, and clicking an element on the page is the core
-interaction of this extension. The panel opens only in response to the user
-clicking the extension's toolbar icon.
+element details, live selector editor and screenshot. A side panel is required
+rather than a popup because a popup closes the moment the user clicks into the
+page, and clicking an element on the page is the core interaction of this
+extension. The panel opens only in response to the user clicking the
+extension's toolbar icon.
 ```
 
 **storage**

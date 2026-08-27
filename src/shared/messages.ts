@@ -29,6 +29,16 @@ export type PanelToContent =
   | { type: 'PSP_HIGHLIGHT'; selector: string | null }
   | { type: 'PSP_SETTINGS'; settings: Settings }
   /**
+   * Freeze mode: block the events that dismiss dropdowns and popup LOVs, so
+   * their contents can be picked. See content/freeze.ts.
+   */
+  | { type: 'PSP_SET_FROZEN'; frozen: boolean }
+  /**
+   * The keyboard shortcut's entry point. A toggle rather than a set because the
+   * service worker holds no state — the page knows whether it is frozen.
+   */
+  | { type: 'PSP_TOGGLE_FROZEN' }
+  /**
    * Get the page ready to be photographed: hide the picker's own overlay in every
    * frame, scroll the picked element into view, and report where it landed. The
    * panel calls chrome.tabs.captureVisibleTab itself — the image never crosses
@@ -46,15 +56,20 @@ export type PanelToContent =
 /** Top frame content script -> side panel. */
 export type ContentToPanel =
   | { type: 'PSP_PICKED'; result: PickResult }
-  | { type: 'PSP_MODE_CHANGED'; mode: 'idle' | 'pick' };
+  | { type: 'PSP_MODE_CHANGED'; mode: 'idle' | 'pick' }
+  /** Freeze changed in the page: the shortcut, Escape, or the watchdog. */
+  | { type: 'PSP_FROZEN_CHANGED'; frozen: boolean };
 
 /** Responses returned synchronously from a PanelToContent request. */
 export interface ContentResponses {
-  PSP_PING: { ok: true; url: string };
+  /** `frozen` rides along so the panel re-syncs on every reconnect. */
+  PSP_PING: { ok: true; url: string; frozen: boolean };
   PSP_SET_MODE: { ok: true };
   PSP_EVALUATE: EvaluationResult;
   PSP_HIGHLIGHT: { ok: true };
   PSP_SETTINGS: { ok: true };
+  PSP_SET_FROZEN: { ok: true; frozen: boolean };
+  PSP_TOGGLE_FROZEN: { ok: true; frozen: boolean };
   PSP_CAPTURE_BEGIN: CaptureStart;
   PSP_CAPTURE_END: { ok: true };
 }
@@ -65,6 +80,12 @@ export interface ContentResponses {
  */
 export type FrameMessage =
   | { __psp: true; type: 'PSP_FRAME_SET_MODE'; mode: 'idle' | 'pick' }
+  /**
+   * Freeze applies per document, and the pane being held open is often in a
+   * child frame — an APEX modal dialog is an iframe — so the flag follows the
+   * same broadcast path as the pick mode.
+   */
+  | { __psp: true; type: 'PSP_FRAME_SET_FROZEN'; frozen: boolean }
   | { __psp: true; type: 'PSP_FRAME_BUBBLE'; result: PickResult }
   | { __psp: true; type: 'PSP_FRAME_CLEAR_HIGHLIGHT' }
   | {
