@@ -410,16 +410,20 @@ in plain Node and is unit tested without a browser.
 
 | Directory | Role |
 |---|---|
-| `src/vendor/` | Generated, **committed on purpose** — builds without a `playwright-core` install, and engine changes show up in review |
-| `src/engine/` | Thin wrappers: bootstrap, generate, query, inspect. The only code that knows the engine exists |
-| `src/core/` | Pure logic: ranking, rules, raw and anchored selectors, crop geometry, locator-input parsing, shadow-boundary detection |
-| `src/content/` | Picker state machine, overlay, freeze shield, frame chain, cross-frame evaluate and measure |
-| `src/sidepanel/` | Preact UI, the chrome.* bridge, and screenshot cropping |
-| `src/shared/` | Message and domain types, plus the expression renderer both sides use |
-| `src/background/` | Service worker: opens the panel, injects the content script |
+| [`src/vendor/`](src/vendor/README.md) | Generated, **committed on purpose** — builds without a `playwright-core` install, and engine changes show up in review |
+| [`src/engine/`](src/engine/README.md) | Thin wrappers: bootstrap, generate, query, inspect. The only code that knows the engine exists |
+| [`src/core/`](src/core/README.md) | Pure logic: ranking, rules, raw and anchored selectors, crop geometry, locator-input parsing, shadow-boundary detection |
+| [`src/content/`](src/content/README.md) | Picker state machine, overlay, freeze shield, frame chain, cross-frame evaluate and measure |
+| [`src/sidepanel/`](src/sidepanel/README.md) | Preact UI, the chrome.* bridge, and screenshot cropping |
+| [`src/shared/`](src/shared/README.md) | Message and domain types, plus the expression renderer both sides use |
+| [`src/background/`](src/background/README.md) | Service worker: opens the panel, injects the content script |
 | `assets/` | `icons/` (derived from one master PNG) and `store/` (listing tiles and screenshots) — both generated, both committed |
 | `scripts/` | `vendor-playwright-engine.mjs` (extraction), `build.mjs` (~100 lines of esbuild), plus icon, store-asset and packaging scripts |
 | `docs/` | [Chrome Web Store submission](docs/chrome-web-store-submission.md) — every dashboard field, with the reasoning behind each answer — and the [privacy policy](docs/privacy-policy.md) |
+
+Each `src/` folder has its own README with the file-by-file breakdown, the
+imports it is allowed to make, and the invariants a change there must not break.
+Those are the maintenance view; this page is the product view.
 
 The blast radius of the engine dependency is contained: everything goes through
 `src/engine/*`, so swapping it touches four files.
