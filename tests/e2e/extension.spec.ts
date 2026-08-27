@@ -106,6 +106,18 @@ async function openFixture(path: string): Promise<number> {
   });
 }
 
+/** Re-inject into a tab that already exists — what the panel does after a navigation. */
+async function injectInto(tabId: number): Promise<void> {
+  await worker.evaluate(
+    async (id) =>
+      void (await chrome.scripting.executeScript({
+        target: { tabId: id as number, allFrames: true },
+        files: ['content.js'],
+      })),
+    tabId,
+  );
+}
+
 async function send(tabId: number, message: unknown): Promise<unknown> {
   return worker.evaluate(
     ([id, msg]) => chrome.tabs.sendMessage(id as number, msg, { frameId: 0 }),
@@ -174,6 +186,123 @@ test('a pick inside an iframe carries a frameLocator hop', async () => {
   const locator = new Function('page', `return ${expression};`)(page);
   await expect(locator).toHaveCount(1);
   await expect(locator).toHaveText('Save from frame');
+});
+
+test.describe('shadow DOM', () => {
+  test('picks the element inside an open shadow root, not its host', async () => {
+    const tabId = await openFixture('/kitchen-sink.html');
+    const page = context.pages().at(-1)!;
+    await clearReceived();
+
+    await send(tabId, { type: 'PSP_SET_MODE', mode: 'pick' });
+    // Playwright's CSS engine pierces open roots, so this really does click the
+    // button. A picker reading event.target would report the host <div>, because
+    // the event is retargeted on its way out of the shadow tree.
+    await page.click('#shadow-btn');
+
+    await expect.poll(async () => (await received()).length).toBeGreaterThan(0);
+    const picked = (await received()).find((m) => m.type === 'PSP_PICKED');
+
+    expect(picked?.result?.info.tagName).toBe('button');
+    expect(picked?.result?.info.shadow.depth).toBe(1);
+    expect(picked?.result?.info.shadow.hosts).toEqual(['div#shadow-host']);
+    expect(picked?.result?.info.shadow.closed).toBe(false);
+    expect(picked?.result?.candidates[0]?.locator).toBe(
+      "getByRole('button', { name: 'Inside shadow root' })",
+    );
+
+    // The breadcrumb has to name the boundary rather than ending silently at it.
+    expect(picked?.result?.info.ancestry).toContain('#shadow-root');
+
+    // The reference forms cannot cross the boundary — that is what the panel warns
+    // about, and it is only honest if they really do fail to resolve.
+    const css = picked!.result!.raw.css;
+    expect(await page.evaluate((s) => document.querySelectorAll(s).length, css)).toBe(0);
+    expect(picked?.result?.raw.axisCss).toBeNull();
+  });
+
+  test('reports the host, and says the root is closed, for a closed shadow root', async () => {
+    const tabId = await openFixture('/kitchen-sink.html');
+    const page = context.pages().at(-1)!;
+    await clearReceived();
+
+    await send(tabId, { type: 'PSP_SET_MODE', mode: 'pick' });
+    // Nothing inside a closed root is reachable — composedPath() stops at the
+    // host, which is the only honest answer available.
+    await page.click('#closed-shadow-host');
+
+    await expect.poll(async () => (await received()).length).toBeGreaterThan(0);
+    const picked = (await received()).find((m) => m.type === 'PSP_PICKED');
+
+    expect(picked?.result?.info.tagName).toBe('div');
+    expect(picked?.result?.info.shadow.depth).toBe(0);
+    // Closed roots are invisible to `element.shadowRoot`, so the host does not
+    // advertise itself as one. Documented in core/shadow.ts.
+    expect(picked?.result?.info.shadow.isHost).toBe(false);
+  });
+});
+
+test.describe('freeze', () => {
+  /** Open the fixture's popup LOV and confirm it is showing. */
+  async function openPane(page: import('@playwright/test').Page): Promise<void> {
+    await page.click('#lov-open');
+    await expect(page.locator('#lov-pane')).toBeVisible();
+  }
+
+  test('without freeze, a blur closes the pane', async () => {
+    const tabId = await openFixture('/kitchen-sink.html');
+    const page = context.pages().at(-1)!;
+    await openPane(page);
+
+    await send(tabId, { type: 'PSP_SET_MODE', mode: 'pick' });
+    await page.locator('#lov-austria').evaluate((el: HTMLElement) => el.blur());
+
+    // Proves the fixture models the problem this feature exists for.
+    await expect(page.locator('#lov-pane')).toBeHidden();
+  });
+
+  test('frozen, the pane survives a blur and its options can be picked', async () => {
+    const tabId = await openFixture('/kitchen-sink.html');
+    const page = context.pages().at(-1)!;
+    await clearReceived();
+
+    expect(await send(tabId, { type: 'PSP_SET_FROZEN', frozen: true })).toEqual({
+      ok: true,
+      frozen: true,
+    });
+
+    await openPane(page);
+    await page.locator('#lov-austria').evaluate((el: HTMLElement) => el.blur());
+    await expect(page.locator('#lov-pane')).toBeVisible();
+
+    await send(tabId, { type: 'PSP_SET_MODE', mode: 'pick' });
+    await page.click('#lov-bulgaria');
+
+    await expect.poll(async () => (await received()).length).toBeGreaterThan(0);
+    const picked = (await received()).find((m) => m.type === 'PSP_PICKED');
+    expect(picked?.result?.candidates[0]?.locator).toBe(
+      "getByRole('option', { name: 'Bulgaria' })",
+    );
+    // Still open afterwards: the pick must not be the thing that dismisses it.
+    await expect(page.locator('#lov-pane')).toBeVisible();
+  });
+
+  test('the page reports its own frozen state, and a fresh injection starts thawed', async () => {
+    const tabId = await openFixture('/kitchen-sink.html');
+    const page = context.pages().at(-1)!;
+
+    expect(await send(tabId, { type: 'PSP_TOGGLE_FROZEN' })).toEqual({ ok: true, frozen: true });
+    expect(await send(tabId, { type: 'PSP_PING' })).toMatchObject({ ok: true, frozen: true });
+    expect(await send(tabId, { type: 'PSP_TOGGLE_FROZEN' })).toEqual({ ok: true, frozen: false });
+
+    // A navigation wipes the content script; the panel re-syncs from the PING
+    // rather than from its own memory of the toggle.
+    await send(tabId, { type: 'PSP_SET_FROZEN', frozen: true });
+    await page.reload();
+    await injectInto(tabId);
+
+    expect(await send(tabId, { type: 'PSP_PING' })).toMatchObject({ frozen: false });
+  });
 });
 
 test.describe('live selector editor', () => {

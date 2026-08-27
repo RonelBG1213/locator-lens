@@ -9,7 +9,6 @@ import { useCallback, useEffect, useRef, useState } from 'preact/hooks';
 
 import { Candidates } from './components/Candidates.js';
 import { Inspector } from './components/Inspector.js';
-import { PomExport } from './components/PomExport.js';
 import { Screenshot } from './components/Screenshot.js';
 import { SelectorEditor } from './components/SelectorEditor.js';
 import {
@@ -18,7 +17,6 @@ import {
   copyImageToClipboard,
   copyToClipboard,
   downloadBlob,
-  downloadText,
   ensureInjected,
   hasPersistentAccess,
   loadSettings,
@@ -29,21 +27,25 @@ import {
 } from './bridge.js';
 import { crop, type Shot } from './capture.js';
 import { PANEL_CSS } from './styles.js';
-import { propertyName } from '../core/pom.js';
-import { pageExpression } from '../shared/expression.js';
 import { DEFAULT_SETTINGS } from '../shared/types.js';
 import type { ContentToPanel } from '../shared/messages.js';
 import type {
-  Candidate,
   CaptureTarget,
   EvaluationResult,
   PickResult,
-  SessionEntry,
   Settings,
 } from '../shared/types.js';
 
 /** Keeps typing responsive while still evaluating against the live page. */
 const EVALUATE_DEBOUNCE_MS = 180;
+
+/**
+ * Read from the manifest rather than a constant: the build stamps it from
+ * package.json, so the number in the corner is always the version that was
+ * actually packaged. Optional-chained because the store-asset renderer boots the
+ * panel against a stubbed `chrome`.
+ */
+const VERSION = chrome.runtime.getManifest?.().version ?? '';
 
 function App() {
   const [tabId, setTabId] = useState<number | null>(null);
@@ -54,8 +56,7 @@ function App() {
   const [selector, setSelector] = useState('');
   const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
 
-  const [session, setSession] = useState<SessionEntry[]>([]);
-  const [pageName, setPageName] = useState('');
+  const [frozen, setFrozen] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [persistent, setPersistent] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -95,6 +96,9 @@ function App() {
     await ensureInjected(id);
     const pong = await send(id, { type: 'PSP_PING' });
     setAvailable(pong !== null);
+    // A navigation re-injects a fresh content script, which starts unfrozen. The
+    // page is the authority on that, never the panel's own memory of it.
+    setFrozen(pong?.frozen === true);
     if (pong) await send(id, { type: 'PSP_SETTINGS', settings });
   }, [settings]);
 
@@ -135,6 +139,10 @@ function App() {
         replaceShot(null);
       } else if (message.type === 'PSP_MODE_CHANGED') {
         setPicking(message.mode === 'pick');
+      } else if (message.type === 'PSP_FROZEN_CHANGED') {
+        // Freeze can change without the panel: the shortcut, Escape, or the
+        // watchdog releasing a forgotten one.
+        setFrozen(message.frozen);
       }
     };
     chrome.runtime.onMessage.addListener(listener);
@@ -173,6 +181,13 @@ function App() {
     else setAvailable(false);
   }, [picking, tabId]);
 
+  const toggleFreeze = useCallback(async () => {
+    if (tabId === null) return;
+    const answer = await send(tabId, { type: 'PSP_SET_FROZEN', frozen: !frozen });
+    if (answer) setFrozen(answer.frozen);
+    else setAvailable(false);
+  }, [frozen, tabId]);
+
   const highlight = useCallback(
     (value: string | null) => {
       if (tabId !== null) void send(tabId, { type: 'PSP_HIGHLIGHT', selector: value });
@@ -185,22 +200,6 @@ function App() {
       void copyToClipboard(text).then(() => flash('Copied'));
     },
     [flash],
-  );
-
-  const addToSession = useCallback(
-    (candidate: Candidate) => {
-      if (!pick) return;
-      const entry: SessionEntry = {
-        name: propertyName({ accessibleName: pick.info.accessibleName, role: pick.info.role }),
-        // Frame hops belong on the property, so the page object works from `page`.
-        locator: pageExpression(pick.frameChain, candidate.locator).replace(/^page\./, ''),
-        role: pick.info.role,
-        accessibleName: pick.info.accessibleName,
-      };
-      setSession((current) => [...current, entry]);
-      flash('Added to page object');
-    },
-    [pick, flash],
   );
 
   /**
@@ -278,6 +277,15 @@ function App() {
         <h1>Locator Lens</h1>
         {toast && <span class="badge plain">{toast}</span>}
         <button
+          class={frozen ? 'toggle on' : 'toggle'}
+          aria-pressed={frozen}
+          disabled={available === false}
+          title="Stop dropdowns and popup LOVs from closing while you pick (Alt+Shift+F)"
+          onClick={() => void toggleFreeze()}
+        >
+          {frozen ? 'Frozen' : 'Freeze'}
+        </button>
+        <button
           class="primary"
           aria-pressed={picking}
           disabled={available === false}
@@ -288,6 +296,13 @@ function App() {
       </header>
 
       <main>
+        {frozen && (
+          <p class="warn frozen-note">
+            Frozen — the page cannot close its dropdowns, and its focus handlers are
+            suspended. Press Esc on the page, or Freeze again, to release it.
+          </p>
+        )}
+
         {available === false && (
           <p class="empty">
             Can’t reach this page. Chrome blocks extensions on <code>chrome://</code> pages, the Web
@@ -299,7 +314,10 @@ function App() {
           <p class="empty">
             Click <strong>Pick element</strong>, then click anything on the page.
             <br />
-            <span class="hint">Esc cancels. Alt+Shift+P toggles picking.</span>
+            <span class="hint">
+              Esc cancels. Alt+Shift+P toggles picking, Alt+Shift+F freezes the page so a
+              dropdown stays open.
+            </span>
           </p>
         )}
 
@@ -312,9 +330,9 @@ function App() {
               frameChain={pick.frameChain}
               frameChainWarning={pick.frameChainWarning}
               retarget={pick.retarget}
+              shadow={pick.info.shadow}
               onCopy={copy}
               onHighlight={highlight}
-              onAddToSession={addToSession}
             />
             <Inspector info={pick.info} raw={pick.raw} onCopy={copy} />
           </>
@@ -343,16 +361,6 @@ function App() {
             onClear={() => replaceShot(null)}
           />
         )}
-
-        <PomExport
-          pageName={pageName}
-          entries={session}
-          onPageNameChange={setPageName}
-          onRemove={(index) => setSession((c) => c.filter((_, i) => i !== index))}
-          onClear={() => setSession([])}
-          onCopy={copy}
-          onDownload={downloadText}
-        />
 
         <section>
           <h2>Settings</h2>
@@ -397,6 +405,8 @@ function App() {
           </div>
         </section>
       </main>
+
+      {VERSION && <span class="version">v.{VERSION}</span>}
     </>
   );
 }

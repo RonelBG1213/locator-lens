@@ -8,11 +8,14 @@
  * lookup can actually match.
  */
 import { engine } from './bootstrap.js';
+import { shadowContext, shadowHostOf } from '../core/shadow.js';
 import type { ElementInfo } from '../shared/types.js';
 
 const MAX_TEXT = 200;
 const MAX_ATTR_VALUE = 200;
 const MAX_ANCESTRY = 6;
+/** Stands in the breadcrumb for a boundary the walk stepped over. */
+const SHADOW_MARK = '#shadow-root';
 
 export function inspect(element: Element): ElementInfo {
   const injected = engine();
@@ -36,6 +39,7 @@ export function inspect(element: Element): ElementInfo {
     editable: state(element, 'editable', false),
     checked: checkedState(element),
     ancestry: ancestry(element),
+    shadow: shadowContext(element),
     boundingBox: hasBox
       ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
       : null,
@@ -66,14 +70,34 @@ function checkedState(element: Element): boolean | 'mixed' | null {
   }, null);
 }
 
-/** Outermost-first breadcrumb, trimmed to the nearest few ancestors. */
+/**
+ * Outermost-first breadcrumb, trimmed to the nearest few ancestors.
+ *
+ * Steps over shadow boundaries rather than stopping at one. `parentElement` is
+ * null for the top of a shadow tree, so a breadcrumb that only followed it would
+ * end silently at the boundary and imply the element sits directly in the
+ * document — which is the misreading this whole feature exists to prevent.
+ */
 function ancestry(element: Element): string[] {
   const chain: string[] = [];
-  let node = element.parentElement;
-  while (node && chain.length < MAX_ANCESTRY) {
-    chain.unshift(describe(node));
-    node = node.parentElement;
+  let node: Element = element;
+
+  while (chain.length < MAX_ANCESTRY) {
+    const parent = node.parentElement;
+    if (parent) {
+      chain.unshift(describe(parent));
+      node = parent;
+      continue;
+    }
+
+    const host = shadowHostOf(node);
+    if (!host) break;
+    // Marker first, then the host: both land ahead of what is already collected.
+    chain.unshift(SHADOW_MARK);
+    chain.unshift(describe(host));
+    node = host;
   }
+
   return chain;
 }
 

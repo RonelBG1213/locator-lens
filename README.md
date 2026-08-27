@@ -37,8 +37,8 @@ That claim is enforced by a test, not just asserted in a README — see
   [CSS & XPath](#css--xpath) ·
   [Try a selector](#try-a-selector) ·
   [Screenshot](#screenshot) ·
-  [Page object](#page-object) ·
   [Settings](#settings)
+- [Freeze](#freeze) · [Shadow DOM](#shadow-dom)
 - [How scoring works](#how-scoring-works)
 - [Frames](#frames)
 - [How it works](#how-it-works) · [Project layout](#project-layout)
@@ -55,7 +55,8 @@ That claim is enforced by a test, not just asserted in a README — see
 | **Element inspector** | Computed role, accessible name and description, attributes, state, DOM breadcrumb — so a ranking is explainable, not magic |
 | **CSS & XPath** | Reference forms for DevTools and non-Playwright tools, both absolute and anchored to a nearby named element |
 | **Screenshots** | Element or viewport, cropped from a real capture, with the picker's own overlay hidden. Copy to clipboard or download |
-| **Page object export** | Collect several picks, export a `*.page.ts` class following standard POM conventions |
+| **Freeze** | Holds dropdowns, autocompletes and popup LOVs open so their contents can be picked instead of vanishing on the first click |
+| **Shadow DOM aware** | Picks the real element inside open shadow roots, names the hosts it crossed, and says which selector forms survive the boundary |
 | **iframe support** | Picks inside frames come back with the full `frameLocator(...)` chain |
 | **Retarget warnings** | When Playwright deliberately points elsewhere (an `<option>` → its `<select>`), the panel says so instead of silently handing you a different element |
 
@@ -83,10 +84,10 @@ development path; the packaged build is what goes to the Chrome Web Store.
 1. Open the page you want locators for and click the toolbar icon. The side panel
    opens and the content script is injected into every frame.
 2. Click **Pick element**, then click anything on the page.
-   `Esc` cancels. `Alt+Shift+P` toggles picking without touching the panel.
+   `Esc` cancels. `Alt+Shift+P` toggles picking without touching the panel, and
+   `Alt+Shift+F` [freezes the page](#freeze) so a dropdown stays open.
 3. The best candidate is at the top. Click any locator to copy it.
 4. Hover a candidate to highlight what it matches, on the page, in real time.
-5. Use **+ page object** to collect elements, then export the class.
 
 ## The panel, section by section
 
@@ -97,7 +98,7 @@ The primary screen. One card per candidate, best first.
 ```
 ┌──────────────────────────────────────────────────────────┐
 │  100   page.getByRole('button', { name: 'Save' })        │
-│  role · 1 match · codegen default        copy  + page object │
+│  role · 1 match · codegen default                   copy │
 │  • Role + accessible name: survives markup and styling changes │
 └──────────────────────────────────────────────────────────┘
 ```
@@ -226,36 +227,6 @@ also breaks the no-CDP rule this project rests on) or a scroll-and-stitch loop
 fighting sticky headers, lazy loading and a 2-captures-per-second quota. Neither
 is a trade a locator picker should make.
 
-### Page object
-
-Click **+ page object** on any candidate to collect it. Name the page, then copy
-or download a `*.page.ts` class:
-
-```ts
-import type { Page } from '@playwright/test';
-
-export class CheckoutPage {
-  /** textbox: Email */
-  readonly emailInput = this.page.getByLabel('Email');
-  /** button: Place order */
-  readonly placeOrderButton = this.page.getByRole('button', { name: 'Place order' });
-
-  constructor(private readonly page: Page) {}
-}
-```
-
-Property names are derived from the accessible name in camelCase, suffixed by
-role (`save` → `saveButton`, but `Save Button` stays `saveButton` — no
-duplication), capped at four words, never a reserved word, never shadowing
-`page`, and de-duplicated with `2`, `3`, … Frame hops are folded into the
-property, so the class works from a plain `page`.
-
-The class name and filename are both derived from what you type:
-`Customer Details` → `CustomerDetailsPage` in `customer-details.page.ts`.
-
-**No assertions and no action methods are generated.** Those are written by hand
-once the shape of the flow is known; this generates the tedious half only.
-
 ### Settings
 
 **Test ID attribute** — must match `use.testIdAttribute` in your Playwright
@@ -322,6 +293,55 @@ This was found by a unit test: an ambiguous `getByRole` (100 − 60 = 40) was
 beating a unique CSS path (25). No penalty weighting can express "always" —
 tiering can. Ties break toward the codegen default, then toward the shorter
 locator.
+
+## Freeze
+
+A popup list of values, an autocomplete, a menu — anything that closes when
+attention moves elsewhere — cannot normally be picked. Clicking into the side
+panel blurs the page, which is enough to dismiss the pane before picking even
+starts.
+
+**Freeze** blocks the events those panes close on. Press `Alt+Shift+F`, or use the
+toggle in the panel header:
+
+| Blocked while frozen | When |
+|---|---|
+| `focusout`, `blur` | Always. This is the one that fires when you click the panel |
+| `pointerdown`, `mousedown` | Only while picking, so you can still type in the pane's own search box |
+| `Escape` | Always, and rerouted: it cancels the pick, or releases the freeze if there is no pick |
+
+Use the keyboard shortcut when the pane is already open — reaching for the panel's
+own toggle costs you the blur you are trying to prevent. The page shows a
+**frozen** badge for as long as it lasts, and the freeze releases itself after
+five idle minutes, on navigation, or on `Escape`.
+
+While frozen the page genuinely cannot run its own focus handling, which is the
+point and also the reason it is this visible. It works against panes that listen
+on `document` — which is nearly all of them. A page that registered its own
+`window`-capture handler before the content script was injected can still win.
+
+## Shadow DOM
+
+The picker resolves clicks through `composedPath()`, so clicking a button inside
+a web component picks the **button**, not the component. The panel then names
+what it crossed:
+
+```
+Shadow      inside my-combo#country
+body › my-combo#country › #shadow-root › div.list › button
+```
+
+The two halves of the panel disagree across that boundary, so the panel says
+which is which:
+
+| | Crosses an open shadow root? |
+|---|---|
+| Ranked locators (`getByRole`, `getByTestId`, …) | **Yes** — Playwright's engine pierces open roots |
+| CSS & XPath reference forms | **No** — plain document queries. The panel warns, rather than handing you a path that silently resolves to nothing |
+
+A **closed** root stops everything, Playwright included. Nothing inside one can be
+picked or located, so the pick reports the host and the panel says why rather than
+suggesting a locator that cannot work.
 
 ## Frames
 
@@ -392,8 +412,8 @@ in plain Node and is unit tested without a browser.
 |---|---|
 | `src/vendor/` | Generated, **committed on purpose** — builds without a `playwright-core` install, and engine changes show up in review |
 | `src/engine/` | Thin wrappers: bootstrap, generate, query, inspect. The only code that knows the engine exists |
-| `src/core/` | Pure logic: ranking, rules, raw and anchored selectors, crop geometry, locator-input parsing, POM codegen. Unit tested without a browser |
-| `src/content/` | Picker state machine, overlay, frame chain, cross-frame evaluate and measure |
+| `src/core/` | Pure logic: ranking, rules, raw and anchored selectors, crop geometry, locator-input parsing, shadow-boundary detection |
+| `src/content/` | Picker state machine, overlay, freeze shield, frame chain, cross-frame evaluate and measure |
 | `src/sidepanel/` | Preact UI, the chrome.* bridge, and screenshot cropping |
 | `src/shared/` | Message and domain types, plus the expression renderer both sides use |
 | `src/background/` | Service worker: opens the panel, injects the content script |
@@ -444,20 +464,19 @@ panel was the price.
 
 ```bash
 npm run typecheck
-npm run test:unit    # 73 tests — ranking, POM codegen, crop geometry, locator parsing
-npm run test:e2e     # 39 tests — round-trip, engine API, extension integration
+npm run test:unit    # 56 tests — ranking, crop geometry, locator parsing
+npm run test:e2e     # 48 tests — round-trip, engine API, extension integration
 npm test             # all of the above
 ```
 
 | Suite | Covers |
 |---|---|
 | `tests/unit/rank.spec.ts` | Scoring, tiering, tie-breaks |
-| `tests/unit/pom.spec.ts` | Property naming, de-duplication, class/file naming, output shape |
 | `tests/unit/crop.spec.ts` | Crop arithmetic — scale measurement, clamping, clipped detection |
 | `tests/unit/locatorInput.spec.ts` | `page.` stripping, frame splitting, parse failures |
 | `tests/e2e/roundtrip.spec.ts` | The one the design rests on |
 | `tests/e2e/engine.spec.ts` | Fails loudly if a member of the injected script disappears |
-| `tests/e2e/extension.spec.ts` | The packaged extension, real service worker, real `chrome.*` messaging |
+| `tests/e2e/extension.spec.ts` | The packaged extension, real service worker, real `chrome.*` messaging — including freeze against a pane that really does close three different ways, and picking inside a shadow root |
 
 The important one is `tests/e2e/roundtrip.spec.ts`. It drives the real pipeline
 over every element in a hostile fixture page (duplicate buttons, generated ids,
@@ -546,7 +565,12 @@ next one and needs nothing else to change.
   URLs, the Web Store, and the PDF viewer. The panel says so instead of failing
   silently.
 - **CSS/XPath do not pierce shadow DOM.** The ranked locators do; the reference
-  forms use native DOM APIs and stop at the shadow boundary.
+  forms use native DOM APIs and stop at the shadow boundary. [The panel says
+  so](#shadow-dom) rather than leaving you to find out.
+- **Closed shadow roots are opaque to everyone.** Playwright cannot pierce one
+  either, so the host is picked and the panel explains why.
+- **Freeze is not universal.** [It beats panes that listen on `document`](#freeze),
+  not a page that got to `window` capture first.
 - **Cross-origin frames need permission.** Without all-sites access they are
   reported as unreachable rather than searched.
 
@@ -560,6 +584,9 @@ next one and needs nothing else to change.
 | "N frames did not respond" | Cross-origin iframes without host permission. Grant all-sites access in Settings |
 | The panel shows a different element than you clicked | Retargeting, and the panel says so — e.g. an `<option>` resolves to its `<select>`, which is correct advice (`selectOption()`) but a different element |
 | Chrome would not capture this tab | `activeTab` expired, or the tab is restricted. Click the toolbar icon, or enable **Stay connected** |
+| A dropdown closes before you can pick in it | Turn on [Freeze](#freeze) — `Alt+Shift+F`, ideally before opening the pane |
+| The page stopped reacting to focus | It is still frozen. Press `Esc` on the page, or use the header toggle |
+| You picked a web component instead of the control in it | Only on a **closed** shadow root, where nothing inside is reachable by anyone, Playwright included |
 | Changes don't show up after a rebuild | Reload the extension in `chrome://extensions`. There is no HMR |
 | `npm run build` fails on a missing vendored engine | Run `npm run vendor` first |
 | `npm run build` fails on a missing icon | Run `npm run icons` first |

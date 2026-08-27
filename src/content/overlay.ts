@@ -27,6 +27,18 @@ const STYLES = `
   }
   .box.match { border-color: #16a34a; background: rgba(22, 163, 74, 0.12); }
   .box.ambiguous { border-color: #ea580c; background: rgba(234, 88, 12, 0.14); }
+  .banner {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: #0b3b6f;
+    color: #dbeafe;
+    border: 1px solid #2d7ff9;
+    font: 600 11px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    pointer-events: none;
+  }
   .label {
     position: fixed;
     max-width: 340px;
@@ -46,6 +58,7 @@ type BoxKind = 'hover' | 'match' | 'ambiguous';
 
 let root: ShadowRoot | null = null;
 let layer: HTMLDivElement | null = null;
+let banner: HTMLDivElement | null = null;
 let suppressed = false;
 
 function ensureLayer(): HTMLDivElement {
@@ -114,6 +127,28 @@ export function clear(): void {
 }
 
 /**
+ * A standing badge for a mode that changes how the page behaves — currently only
+ * freeze. Deliberately a sibling of the box layer rather than a child: `clear()`
+ * empties that layer on every hover, and a badge that blinked with the cursor
+ * would be no warning at all.
+ */
+export function showBanner(text: string | null): void {
+  if (text === null) {
+    banner?.remove();
+    banner = null;
+    return;
+  }
+
+  ensureLayer(); // also creates the root the banner hangs off
+  if (!banner?.isConnected) {
+    banner = document.createElement('div');
+    banner.className = 'banner';
+    root?.appendChild(banner);
+  }
+  banner.textContent = text;
+}
+
+/**
  * Hide the overlay without forgetting what it was showing.
  *
  * A screenshot photographs the page as it stands, so the picker's own highlight
@@ -139,4 +174,5 @@ export function destroy(): void {
   root?.host.remove();
   root = null;
   layer = null;
+  banner = null;
 }

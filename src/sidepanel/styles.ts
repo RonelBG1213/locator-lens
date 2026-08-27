@@ -13,7 +13,16 @@ export const PANEL_CSS = `
     border-bottom: 1px solid var(--line);
   }
   header h1 { flex: 1; margin: 0; font-size: 13px; font-weight: 600; }
-  main { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+  /* Bottom padding leaves room for the version badge, which is fixed over it. */
+  main { flex: 1; padding: 12px 12px 30px; display: flex; flex-direction: column; gap: 14px; }
+
+  /* Fixed rather than in the flow: it should be legible without scrolling to the
+     end of a long panel. pointer-events: none so it never eats a click. */
+  .version {
+    position: fixed; right: 8px; bottom: 6px; z-index: 3;
+    font: 10px/1.4 var(--mono); color: var(--muted); opacity: .75;
+    pointer-events: none; user-select: none;
+  }
 
   button {
     font: inherit; color: var(--fg);
@@ -27,6 +36,8 @@ export const PANEL_CSS = `
     background: none; border: none; padding: 2px 4px;
     color: var(--muted); text-decoration: underline; cursor: pointer;
   }
+  button.toggle { color: var(--muted); }
+  button.toggle.on { color: var(--accent); border-color: var(--accent); font-weight: 600; }
 
   input[type="text"], input[type="search"] {
     width: 100%; font: 12px/1.5 var(--mono);
@@ -49,6 +60,8 @@ export const PANEL_CSS = `
   .empty { color: var(--muted); padding: 24px 12px; text-align: center; }
   .hint { color: var(--muted); font-size: 12px; }
   .warn { color: var(--fair); font-size: 12px; }
+  /* A standing notice for a mode that changes how the page behaves. */
+  .frozen-note { margin: 0; padding: 8px 10px; border: 1px solid var(--fair); border-radius: 6px; }
   .error { color: var(--weak); font-size: 12px; font-family: var(--mono); }
 
   .candidate { border: 1px solid var(--line); border-radius: 6px; padding: 8px 9px; }
@@ -97,6 +110,4 @@ export const PANEL_CSS = `
   .row { display: flex; align-items: center; gap: 8px; }
   .row.wrap { flex-wrap: wrap; }
   .grow { flex: 1; }
-  ol.session { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; }
-  ol.session code { font: 11.5px/1.4 var(--mono); word-break: break-all; }
 `;
